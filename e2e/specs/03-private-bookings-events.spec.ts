@@ -1,0 +1,2 @@
+import { test,expect } from "@playwright/test";import { login } from "../fixtures/auth";
+test("私教订场和活动入口可用",async({page})=>{await login(page);await page.getByRole("link",{name:"私教管理"}).click();await expect(page.getByRole("button",{name:"预约私教"})).toBeVisible();await page.getByRole("link",{name:"场地预订"}).click();await expect(page.getByRole("button",{name:"确认订场"})).toBeVisible();await page.getByRole("link",{name:"临时活动"}).click();await expect(page.getByRole("button",{name:"创建活动"})).toBeVisible()});

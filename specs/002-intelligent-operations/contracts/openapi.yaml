@@ -1,0 +1,1410 @@
+openapi: 3.1.0
+info:
+  title: ShuttleCube Intelligent Operations API
+  version: 0.1.0
+  description: |
+    Phase 0-3 contract for the case-driven intelligent operations system.
+    Every operation is scoped from the authenticated session; organization_id,
+    venue_id and capabilities are never accepted from a request body.
+servers:
+  - url: /api/v1
+security:
+  - sessionCookie: []
+tags:
+  - name: Operations Context
+  - name: Operations Cases
+  - name: Operations Runs
+  - name: Operations Reports
+  - name: Operations Policies
+  - name: Operations Approvals
+
+paths:
+  /operations/context:
+    get:
+      tags: [Operations Context]
+      operationId: getOperationsContext
+      summary: Return the server-resolved operations scope and capabilities
+      responses:
+        "200":
+          description: Current immutable request scope
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/OperationsContext"}
+        "401": {$ref: "#/components/responses/Problem"}
+        "403": {$ref: "#/components/responses/Problem"}
+
+  /operations/settings/model:
+    get:
+      tags: [Operations Context]
+      operationId: getOperationsModelSetting
+      summary: Return the current Venue model opt-in state
+      responses:
+        "200":
+          description: Model setting; credentials and secrets are never returned
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ModelSetting"}
+        "401": {$ref: "#/components/responses/Problem"}
+        "403": {$ref: "#/components/responses/Problem"}
+    patch:
+      tags: [Operations Context]
+      operationId: updateOperationsModelSetting
+      summary: Explicitly enable or disable model use for the current Venue
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ModelSettingUpdate"}
+      responses:
+        "200":
+          description: Updated model setting
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ModelSetting"}
+        "401": {$ref: "#/components/responses/Problem"}
+        "403": {$ref: "#/components/responses/Problem"}
+        "409": {$ref: "#/components/responses/Problem"}
+
+  /operations/settings/runtime:
+    get:
+      tags: [Operations Context]
+      operationId: getOperationsRuntimeSetting
+      summary: Return deterministic operations and write-tool feature flags
+      responses:
+        "200":
+          description: Current Venue runtime setting
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/RuntimeSetting"}
+        "401": {$ref: "#/components/responses/Problem"}
+        "403": {$ref: "#/components/responses/Problem"}
+    patch:
+      tags: [Operations Context]
+      operationId: updateOperationsRuntimeSetting
+      summary: Enable or disable deterministic operations and approved write tools
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/RuntimeSettingUpdate"}
+      responses:
+        "200":
+          description: Updated runtime setting
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/RuntimeSetting"}
+        "401": {$ref: "#/components/responses/Problem"}
+        "403": {$ref: "#/components/responses/Problem"}
+        "409": {$ref: "#/components/responses/Problem"}
+        "422": {$ref: "#/components/responses/Problem"}
+
+  /operations/memberships:
+    get:
+      tags: [Operations Context]
+      operationId: listOperationsMemberships
+      summary: List current-Venue memberships for permission review
+      responses:
+        "200":
+          description: Memberships and derived capability bundles
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: "#/components/schemas/MembershipSummary"}
+        "401": {$ref: "#/components/responses/Problem"}
+        "403": {$ref: "#/components/responses/Problem"}
+
+  /operations/memberships/{membership_id}:
+    patch:
+      tags: [Operations Context]
+      operationId: updateOperationsMembership
+      summary: Review, enable, disable or change a fixed Venue role bundle
+      parameters:
+        - $ref: "#/components/parameters/MembershipId"
+        - $ref: "#/components/parameters/CsrfToken"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/MembershipUpdate"}
+      responses:
+        "200":
+          description: Updated membership; invalid assignees are deterministically requeued
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/MembershipSummary"}
+        "401": {$ref: "#/components/responses/Problem"}
+        "403": {$ref: "#/components/responses/Problem"}
+        "404": {$ref: "#/components/responses/Problem"}
+        "409": {$ref: "#/components/responses/Problem"}
+
+  /operations/scans:
+    post:
+      tags: [Operations Runs]
+      operationId: startOperationsScan
+      summary: Queue a deterministic manual scan for the current venue
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ScanRequest"}
+      responses:
+        "202":
+          description: Scan queued or an idempotent prior result returned
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/RunSummary"}
+        "401": {$ref: "#/components/responses/Problem"}
+        "403": {$ref: "#/components/responses/Problem"}
+        "409": {$ref: "#/components/responses/Problem"}
+        "422": {$ref: "#/components/responses/Problem"}
+
+  /operations/cases:
+    get:
+      tags: [Operations Cases]
+      operationId: listOperationCases
+      summary: List operation cases in the current venue only
+      parameters:
+        - name: state
+          in: query
+          schema:
+            type: array
+            items: {$ref: "#/components/schemas/CaseState"}
+          explode: true
+        - name: case_type
+          in: query
+          schema: {type: string, maxLength: 80}
+        - name: assigned_to
+          in: query
+          schema: {type: string, format: uuid}
+        - name: cursor
+          in: query
+          schema: {type: string, maxLength: 300}
+        - name: limit
+          in: query
+          schema: {type: integer, minimum: 1, maximum: 100, default: 30}
+      responses:
+        "200":
+          description: Cursor-paged case list ordered by severity, due date and recency
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/CursorPage"
+                  - type: object
+                    required: [items]
+                    properties:
+                      items:
+                        type: array
+                        items: {$ref: "#/components/schemas/CaseSummary"}
+        "401": {$ref: "#/components/responses/Problem"}
+        "403": {$ref: "#/components/responses/Problem"}
+
+  /operations/cases/{case_id}:
+    get:
+      tags: [Operations Cases]
+      operationId: getOperationCase
+      summary: Return evidence, activities, plans and timeline for one case
+      parameters:
+        - $ref: "#/components/parameters/CaseId"
+      responses:
+        "200":
+          description: Case detail
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CaseDetail"}
+        "401": {$ref: "#/components/responses/Problem"}
+        "403": {$ref: "#/components/responses/Problem"}
+        "404": {$ref: "#/components/responses/Problem"}
+
+  /operations/cases/{case_id}:analyze:
+    post:
+      tags: [Operations Cases]
+      operationId: analyzeOperationCase
+      summary: Queue an optional model-assisted analysis using frozen evidence
+      parameters:
+        - $ref: "#/components/parameters/CaseId"
+        - $ref: "#/components/parameters/CsrfToken"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                expected_case_version: {type: integer, minimum: 1}
+      responses:
+        "202":
+          description: Analysis queued; deterministic evidence remains independently available
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/RunSummary"}
+        "401": {$ref: "#/components/responses/Problem"}
+        "403": {$ref: "#/components/responses/Problem"}
+        "404": {$ref: "#/components/responses/Problem"}
+        "409": {$ref: "#/components/responses/Problem"}
+
+  /operations/cases/{case_id}/activities:
+    post:
+      tags: [Operations Cases]
+      operationId: recordOperationCaseActivity
+      summary: Record a human-confirmed follow-up fact; never mutates finance or entitlement facts
+      parameters:
+        - $ref: "#/components/parameters/CaseId"
+        - $ref: "#/components/parameters/CsrfToken"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/CaseActivityInput"}
+      responses:
+        "201":
+          description: Activity recorded
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CaseActivity"}
+        "401": {$ref: "#/components/responses/Problem"}
+        "403": {$ref: "#/components/responses/Problem"}
+        "404": {$ref: "#/components/responses/Problem"}
+        "409": {$ref: "#/components/responses/Problem"}
+        "422": {$ref: "#/components/responses/Problem"}
+
+  /operations/cases/{case_id}:dismiss:
+    post:
+      tags: [Operations Cases]
+      operationId: dismissOperationCase
+      summary: Human-only dismissal; this endpoint is not exposed as a model Tool
+      parameters:
+        - $ref: "#/components/parameters/CaseId"
+        - $ref: "#/components/parameters/CsrfToken"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [reason, expected_case_version]
+              properties:
+                reason: {type: string, minLength: 1, maxLength: 500}
+                expected_case_version: {type: integer, minimum: 1}
+      responses:
+        "200":
+          description: Dismissed case
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CaseSummary"}
+        "401": {$ref: "#/components/responses/Problem"}
+        "403": {$ref: "#/components/responses/Problem"}
+        "404": {$ref: "#/components/responses/Problem"}
+        "409": {$ref: "#/components/responses/Problem"}
+
+  /operations/cases/{case_id}:claim:
+    post:
+      tags: [Operations Cases]
+      operationId: claimOperationCase
+      summary: Claim an unassigned case when the caller has its required capability
+      parameters:
+        - $ref: "#/components/parameters/CaseId"
+        - $ref: "#/components/parameters/CsrfToken"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [expected_case_version]
+              properties:
+                expected_case_version: {type: integer, minimum: 1}
+      responses:
+        "200":
+          description: Claimed case
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CaseSummary"}
+        "401": {$ref: "#/components/responses/Problem"}
+        "403": {$ref: "#/components/responses/Problem"}
+        "404": {$ref: "#/components/responses/Problem"}
+        "409": {$ref: "#/components/responses/Problem"}
+
+  /operations/cases/{case_id}:assign:
+    post:
+      tags: [Operations Cases]
+      operationId: assignOperationCase
+      summary: Assign or reassign a case to an eligible current-Venue member; requires operations.case.assign
+      parameters:
+        - $ref: "#/components/parameters/CaseId"
+        - $ref: "#/components/parameters/CsrfToken"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/CaseAssignmentInput"}
+      responses:
+        "200":
+          description: Assigned case
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CaseSummary"}
+        "401": {$ref: "#/components/responses/Problem"}
+        "403": {$ref: "#/components/responses/Problem"}
+        "404": {$ref: "#/components/responses/Problem"}
+        "409": {$ref: "#/components/responses/Problem"}
+
+  /operations/cases/{case_id}/replacement-candidates:
+    post:
+      tags: [Operations Cases]
+      operationId: listReplacementCandidates
+      summary: Deterministically generate legal replacement resource plans, treating active CourtBlock allocations as conflicts
+      parameters:
+        - $ref: "#/components/parameters/CaseId"
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ReplacementCandidateRequest"}
+      responses:
+        "200":
+          description: Legal plans only; ordering may include a non-authoritative model score
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [schema_version, generated_at, evidence_hash, policy_version, candidates, caveats]
+                properties:
+                  schema_version: {type: string}
+                  generated_at: {type: string, format: date-time}
+                  evidence_hash: {type: string}
+                  policy_version: {type: integer}
+                  candidates:
+                    type: array
+                    items: {$ref: "#/components/schemas/ReplacementResourcePlan"}
+                  caveats:
+                    type: array
+                    items: {type: string}
+        "401": {$ref: "#/components/responses/Problem"}
+        "403": {$ref: "#/components/responses/Problem"}
+        "404": {$ref: "#/components/responses/Problem"}
+        "409": {$ref: "#/components/responses/Problem"}
+        "422": {$ref: "#/components/responses/Problem"}
+
+  /operations/cases/{case_id}/reconciliation-context:
+    get:
+      tags: [Operations Cases]
+      operationId: getOperationCaseReconciliationContext
+      summary: Read the scoped deterministic reconciliation result and human repair entry points
+      parameters:
+        - $ref: "#/components/parameters/CaseId"
+      responses:
+        "200":
+          description: Deterministic reconciliation context; no automatic repair is available
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ReconciliationContext"}
+        "401": {$ref: "#/components/responses/Problem"}
+        "403": {$ref: "#/components/responses/Problem"}
+        "404": {$ref: "#/components/responses/Problem"}
+        "409": {$ref: "#/components/responses/Problem"}
+        "422": {$ref: "#/components/responses/Problem"}
+
+  /operations/cases/{case_id}/replacement-proposals:
+    post:
+      tags: [Operations Cases]
+      operationId: proposeReplacement
+      summary: Freeze one resource plan as a medium-risk ToolCall and request approval
+      parameters:
+        - $ref: "#/components/parameters/CaseId"
+        - $ref: "#/components/parameters/CsrfToken"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [resource_plan_id, coordination_confirmed, expected_case_version]
+              properties:
+                resource_plan_id: {type: string, format: uuid}
+                coordination_confirmed:
+                  type: boolean
+                  const: true
+                  description: Human attestation that student coordination is complete.
+                expected_case_version: {type: integer, minimum: 1}
+      responses:
+        "201":
+          description: Immutable proposal and pending approval
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ReplacementProposal"}
+        "401": {$ref: "#/components/responses/Problem"}
+        "403": {$ref: "#/components/responses/Problem"}
+        "404": {$ref: "#/components/responses/Problem"}
+        "409": {$ref: "#/components/responses/Problem"}
+        "422": {$ref: "#/components/responses/Problem"}
+
+  /operations/runs/{run_id}:
+    get:
+      tags: [Operations Runs]
+      operationId: getOperationRun
+      summary: Poll persisted run state and checkpoint-safe progress
+      parameters:
+        - $ref: "#/components/parameters/RunId"
+      responses:
+        "200":
+          description: Run detail
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/RunDetail"}
+        "401": {$ref: "#/components/responses/Problem"}
+        "403": {$ref: "#/components/responses/Problem"}
+        "404": {$ref: "#/components/responses/Problem"}
+
+  /operations/runs/{run_id}/events:
+    get:
+      tags: [Operations Runs]
+      operationId: listOperationRunEvents
+      summary: Return a redacted trace timeline for authorized administrators
+      parameters:
+        - $ref: "#/components/parameters/RunId"
+        - name: after_sequence
+          in: query
+          schema: {type: integer, minimum: 0, default: 0}
+      responses:
+        "200":
+          description: Append-only redacted events
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: "#/components/schemas/OperationEvent"}
+        "401": {$ref: "#/components/responses/Problem"}
+        "403": {$ref: "#/components/responses/Problem"}
+        "404": {$ref: "#/components/responses/Problem"}
+
+  /operations/reports:
+    get:
+      tags: [Operations Reports]
+      operationId: listOperationsReports
+      summary: List immutable report snapshots for the current venue
+      parameters:
+        - name: period_type
+          in: query
+          schema: {$ref: "#/components/schemas/PeriodType"}
+        - name: cursor
+          in: query
+          schema: {type: string, maxLength: 300}
+        - name: limit
+          in: query
+          schema: {type: integer, minimum: 1, maximum: 100, default: 30}
+      responses:
+        "200":
+          description: Report snapshot summaries
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/CursorPage"
+                  - type: object
+                    required: [items]
+                    properties:
+                      items:
+                        type: array
+                        items: {$ref: "#/components/schemas/ReportSummary"}
+        "401": {$ref: "#/components/responses/Problem"}
+        "403": {$ref: "#/components/responses/Problem"}
+    post:
+      tags: [Operations Reports]
+      operationId: generateOperationsReport
+      summary: Queue deterministic day, week or month snapshot generation
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ReportRequest"}
+      responses:
+        "202":
+          description: Report run queued
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/RunSummary"}
+        "401": {$ref: "#/components/responses/Problem"}
+        "403": {$ref: "#/components/responses/Problem"}
+        "409": {$ref: "#/components/responses/Problem"}
+        "422": {$ref: "#/components/responses/Problem"}
+
+  /operations/reports/{report_id}:
+    get:
+      tags: [Operations Reports]
+      operationId: getOperationsReport
+      summary: Return deterministic facts plus an optional separately generated narrative
+      parameters:
+        - $ref: "#/components/parameters/ReportId"
+      responses:
+        "200":
+          description: Immutable report snapshot
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/OperationsReportSnapshot"}
+        "401": {$ref: "#/components/responses/Problem"}
+        "403": {$ref: "#/components/responses/Problem"}
+        "404": {$ref: "#/components/responses/Problem"}
+
+  /operations/reports/{report_id}/narrative:retry:
+    post:
+      tags: [Operations Reports]
+      operationId: retryOperationsReportNarrative
+      summary: Retry narrative generation from the same immutable snapshot
+      parameters:
+        - $ref: "#/components/parameters/ReportId"
+        - $ref: "#/components/parameters/CsrfToken"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      responses:
+        "202":
+          description: Child narrative run queued
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/RunSummary"}
+        "401": {$ref: "#/components/responses/Problem"}
+        "403": {$ref: "#/components/responses/Problem"}
+        "404": {$ref: "#/components/responses/Problem"}
+        "409": {$ref: "#/components/responses/Problem"}
+
+  /operations/policies:
+    get:
+      tags: [Operations Policies]
+      operationId: listOperationsPolicies
+      summary: List immutable policy versions for the current venue
+      responses:
+        "200":
+          description: Policy versions
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: "#/components/schemas/OperationsPolicy"}
+        "401": {$ref: "#/components/responses/Problem"}
+        "403": {$ref: "#/components/responses/Problem"}
+    post:
+      tags: [Operations Policies]
+      operationId: createOperationsPolicyDraft
+      summary: Create a validated immutable policy draft
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/OperationsPolicyDraftInput"}
+      responses:
+        "201":
+          description: Draft created
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/OperationsPolicy"}
+        "401": {$ref: "#/components/responses/Problem"}
+        "403": {$ref: "#/components/responses/Problem"}
+        "409": {$ref: "#/components/responses/Problem"}
+        "422": {$ref: "#/components/responses/Problem"}
+
+  /operations/policies/{policy_id}:activate:
+    post:
+      tags: [Operations Policies]
+      operationId: activateOperationsPolicy
+      summary: Activate a draft and retire the prior active version atomically
+      parameters:
+        - $ref: "#/components/parameters/PolicyId"
+        - $ref: "#/components/parameters/CsrfToken"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [expected_state]
+              properties:
+                expected_state: {type: string, const: draft}
+      responses:
+        "200":
+          description: Active policy
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/OperationsPolicy"}
+        "401": {$ref: "#/components/responses/Problem"}
+        "403": {$ref: "#/components/responses/Problem"}
+        "404": {$ref: "#/components/responses/Problem"}
+        "409": {$ref: "#/components/responses/Problem"}
+
+  /operations/approvals:
+    get:
+      tags: [Operations Approvals]
+      operationId: listOperationApprovals
+      summary: List approvals in the current venue
+      parameters:
+        - name: state
+          in: query
+          schema:
+            type: array
+            items: {$ref: "#/components/schemas/ApprovalState"}
+          explode: true
+      responses:
+        "200":
+          description: Approval cards with deterministic impact snapshots
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: "#/components/schemas/Approval"}
+        "401": {$ref: "#/components/responses/Problem"}
+        "403": {$ref: "#/components/responses/Problem"}
+
+  /operations/approvals/{approval_id}:approve:
+    post:
+      tags: [Operations Approvals]
+      operationId: approveOperationToolCall
+      summary: Approve an unchanged proposal and queue its controlled execution
+      parameters:
+        - $ref: "#/components/parameters/ApprovalId"
+        - $ref: "#/components/parameters/CsrfToken"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ApprovalDecisionInput"}
+      responses:
+        "202":
+          description: Approval accepted and execution queued
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ApprovalDecisionResult"}
+        "401": {$ref: "#/components/responses/Problem"}
+        "403": {$ref: "#/components/responses/Problem"}
+        "404": {$ref: "#/components/responses/Problem"}
+        "409": {$ref: "#/components/responses/Problem"}
+
+  /operations/approvals/{approval_id}:reject:
+    post:
+      tags: [Operations Approvals]
+      operationId: rejectOperationToolCall
+      summary: Reject a pending proposal without executing it
+      parameters:
+        - $ref: "#/components/parameters/ApprovalId"
+        - $ref: "#/components/parameters/CsrfToken"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ApprovalDecisionInput"}
+      responses:
+        "200":
+          description: Rejected approval
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ApprovalDecisionResult"}
+        "401": {$ref: "#/components/responses/Problem"}
+        "403": {$ref: "#/components/responses/Problem"}
+        "404": {$ref: "#/components/responses/Problem"}
+        "409": {$ref: "#/components/responses/Problem"}
+
+components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: shuttlecube_session
+  parameters:
+    CsrfToken:
+      name: X-CSRF-Token
+      in: header
+      required: true
+      schema: {type: string, minLength: 16, maxLength: 300}
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema: {type: string, minLength: 8, maxLength: 200}
+    CaseId:
+      name: case_id
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
+    RunId:
+      name: run_id
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
+    ReportId:
+      name: report_id
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
+    PolicyId:
+      name: policy_id
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
+    ApprovalId:
+      name: approval_id
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
+    MembershipId:
+      name: membership_id
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
+  responses:
+    Problem:
+      description: RFC 9457-style application problem
+      content:
+        application/problem+json:
+          schema: {$ref: "#/components/schemas/Problem"}
+  schemas:
+    Problem:
+      type: object
+      additionalProperties: true
+      required: [type, title, status, detail, instance]
+      properties:
+        type: {type: string, format: uri}
+        title: {type: string}
+        status: {type: integer, minimum: 400, maximum: 599}
+        detail: {type: string}
+        instance: {type: string}
+    CursorPage:
+      type: object
+      required: [next_cursor]
+      properties:
+        next_cursor: {type: [string, "null"]}
+    OperationsContext:
+      type: object
+      additionalProperties: false
+      required: [organization, venue, user_id, membership_id, capabilities, operations_enabled, write_tools_enabled, model_enabled, policy_status]
+      properties:
+        organization: {$ref: "#/components/schemas/ScopedDisplay"}
+        venue: {$ref: "#/components/schemas/ScopedDisplay"}
+        user_id: {type: string, format: uuid}
+        membership_id: {type: string, format: uuid}
+        capabilities:
+          type: array
+          uniqueItems: true
+          items: {type: string}
+        operations_enabled: {type: boolean}
+        write_tools_enabled: {type: boolean}
+        model_enabled: {type: boolean}
+        policy_status: {type: string, enum: [active, policy_not_configured]}
+    ModelSetting:
+      type: object
+      additionalProperties: false
+      required: [model_enabled, provider_configured, updated_at, version]
+      properties:
+        model_enabled: {type: boolean}
+        provider_configured: {type: boolean}
+        enabled_by: {type: [string, "null"], format: uuid}
+        enabled_at: {type: [string, "null"], format: date-time}
+        updated_at: {type: string, format: date-time}
+        version: {type: integer, minimum: 1}
+    ModelSettingUpdate:
+      type: object
+      additionalProperties: false
+      required: [model_enabled, reason, expected_version]
+      properties:
+        model_enabled: {type: boolean}
+        reason: {type: string, minLength: 1, maxLength: 500}
+        expected_version: {type: integer, minimum: 1}
+    RuntimeSetting:
+      type: object
+      additionalProperties: false
+      required: [operations_enabled, write_tools_enabled, updated_at, version]
+      properties:
+        operations_enabled: {type: boolean}
+        write_tools_enabled: {type: boolean}
+        updated_at: {type: string, format: date-time}
+        version: {type: integer, minimum: 1}
+    RuntimeSettingUpdate:
+      type: object
+      additionalProperties: false
+      required: [operations_enabled, write_tools_enabled, reason, expected_version]
+      properties:
+        operations_enabled: {type: boolean}
+        write_tools_enabled: {type: boolean}
+        reason: {type: string, minLength: 1, maxLength: 500}
+        expected_version: {type: integer, minimum: 1}
+    MembershipSummary:
+      type: object
+      additionalProperties: false
+      required: [id, user_id, display_name, status, role_key, capabilities, version]
+      properties:
+        id: {type: string, format: uuid}
+        user_id: {type: string, format: uuid}
+        display_name: {type: string}
+        status: {type: string, enum: [pending_review, active, disabled]}
+        role_key: {type: string, enum: [owner, operations_manager, operator, finance_viewer]}
+        capabilities:
+          type: array
+          uniqueItems: true
+          items: {type: string}
+        reviewed_by: {type: [string, "null"], format: uuid}
+        reviewed_at: {type: [string, "null"], format: date-time}
+        version: {type: integer, minimum: 1}
+    MembershipUpdate:
+      type: object
+      additionalProperties: false
+      required: [status, role_key, reason, expected_version]
+      properties:
+        status: {type: string, enum: [active, disabled]}
+        role_key: {type: string, enum: [owner, operations_manager, operator, finance_viewer]}
+        reason: {type: string, minLength: 1, maxLength: 500}
+        expected_version: {type: integer, minimum: 1}
+    ScopedDisplay:
+      type: object
+      additionalProperties: false
+      required: [id, name]
+      properties:
+        id: {type: string, format: uuid}
+        name: {type: string}
+    ScanRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        detector_keys:
+          type: array
+          maxItems: 20
+          uniqueItems: true
+          items: {type: string, maxLength: 80}
+    CaseState:
+      type: string
+      enum: [open, analyzing, action_proposed, waiting_approval, executing, verifying, monitoring, waiting_human, escalated, resolved, dismissed]
+    Severity:
+      type: string
+      enum: [info, low, medium, high, critical]
+    CaseSummary:
+      type: object
+      required: [id, case_type, subject_type, subject_id, occurrence_no, severity, priority_score, title, state, queue_key, required_capability, first_detected_at, last_detected_at, policy_version, version]
+      properties:
+        id: {type: string, format: uuid}
+        case_type: {type: string}
+        subject_type: {type: string}
+        subject_id: {type: string, format: uuid}
+        occurrence_no: {type: integer, minimum: 1}
+        severity: {$ref: "#/components/schemas/Severity"}
+        priority_score: {type: string, pattern: "^-?[0-9]+(\\.[0-9]+)?$"}
+        title: {type: string}
+        business_summary: {type: [string, "null"]}
+        state: {$ref: "#/components/schemas/CaseState"}
+        queue_key: {type: string, maxLength: 80}
+        required_capability: {type: string, maxLength: 120}
+        first_detected_at: {type: string, format: date-time}
+        last_detected_at: {type: string, format: date-time}
+        next_check_at: {type: [string, "null"], format: date-time}
+        due_at: {type: [string, "null"], format: date-time}
+        assigned_to: {type: [string, "null"], format: uuid}
+        assigned_at: {type: [string, "null"], format: date-time}
+        assigned_by: {type: [string, "null"], format: uuid}
+        policy_version: {type: integer, minimum: 1}
+        version: {type: integer, minimum: 1}
+    CaseAssignmentInput:
+      type: object
+      additionalProperties: false
+      required: [assignee_membership_id, reason, expected_case_version]
+      properties:
+        assignee_membership_id: {type: string, format: uuid}
+        reason: {type: string, minLength: 1, maxLength: 500}
+        expected_case_version: {type: integer, minimum: 1}
+    CaseDetail:
+      allOf:
+        - $ref: "#/components/schemas/CaseSummary"
+        - type: object
+          required: [evidence, activities, latest_runs, business_links]
+          properties:
+            evidence: {$ref: "#/components/schemas/EvidenceEnvelope"}
+            activities:
+              type: array
+              items: {$ref: "#/components/schemas/CaseActivity"}
+            latest_runs:
+              type: array
+              items: {$ref: "#/components/schemas/RunSummary"}
+            business_links:
+              type: array
+              items: {$ref: "#/components/schemas/BusinessLink"}
+    EvidenceEnvelope:
+      type: object
+      additionalProperties: false
+      required: [schema_version, detector_key, detector_version, policy_version, generated_at, evidence_hash, facts, source_refs]
+      properties:
+        schema_version: {type: string}
+        detector_key: {type: string}
+        detector_version: {type: string}
+        policy_version: {type: integer}
+        generated_at: {type: string, format: date-time}
+        evidence_hash: {type: string}
+        facts: {type: object, additionalProperties: true}
+        source_refs:
+          type: array
+          items: {$ref: "#/components/schemas/SourceRef"}
+    SourceRef:
+      type: object
+      additionalProperties: false
+      required: [source_type, source_id]
+      properties:
+        source_type: {type: string, maxLength: 80}
+        source_id: {type: string, format: uuid}
+        source_version: {type: [integer, "null"], minimum: 1}
+    BusinessLink:
+      type: object
+      additionalProperties: false
+      required: [label, route]
+      properties:
+        label: {type: string}
+        route: {type: string, pattern: "^/"}
+    CaseActivityInput:
+      type: object
+      additionalProperties: false
+      required: [activity_type, channel, outcome_code, summary, happened_at, expected_case_version]
+      properties:
+        activity_type: {type: string, enum: [contact_attempt, contact_result, promise, note, status_decision]}
+        channel: {type: string, enum: [phone, wechat, in_person, other, none]}
+        contact_subject_type: {type: [string, "null"], maxLength: 80}
+        contact_subject_id: {type: [string, "null"], format: uuid}
+        outcome_code: {type: string, enum: [reached, no_answer, promised_payment, paid_elsewhere, renewed, no_intent, follow_later, disputed, invalid_contact, other]}
+        summary: {type: string, minLength: 1, maxLength: 1000}
+        happened_at: {type: string, format: date-time}
+        next_check_at: {type: [string, "null"], format: date-time}
+        expected_case_version: {type: integer, minimum: 1}
+    CaseActivity:
+      type: object
+      additionalProperties: false
+      required: [id, case_id, case_occurrence_no, activity_type, channel, outcome_code, summary, happened_at, operated_by, source, created_at]
+      properties:
+        id: {type: string, format: uuid}
+        case_id: {type: string, format: uuid}
+        case_occurrence_no: {type: integer, minimum: 1}
+        activity_type: {type: string, enum: [contact_attempt, contact_result, promise, note, status_decision]}
+        channel: {type: string, enum: [phone, wechat, in_person, other, none]}
+        contact_subject_type: {type: [string, "null"], maxLength: 80}
+        contact_subject_id: {type: [string, "null"], format: uuid}
+        outcome_code: {type: string, enum: [reached, no_answer, promised_payment, paid_elsewhere, renewed, no_intent, follow_later, disputed, invalid_contact, other]}
+        summary: {type: string, minLength: 1, maxLength: 1000}
+        happened_at: {type: string, format: date-time}
+        next_check_at: {type: [string, "null"], format: date-time}
+        operated_by: {type: string, format: uuid}
+        source: {type: string, enum: [manual, run]}
+        run_id: {type: [string, "null"], format: uuid}
+        created_at: {type: string, format: date-time}
+    RunState:
+      type: string
+      enum: [queued, running, waiting_approval, waiting_human, retry_scheduled, succeeded, failed, escalated, cancelled]
+    RunSummary:
+      type: object
+      required: [id, run_type, trigger_type, state, workflow_key, workflow_version, policy_version, attempt, created_at]
+      properties:
+        id: {type: string, format: uuid}
+        case_id: {type: [string, "null"], format: uuid}
+        parent_run_id: {type: [string, "null"], format: uuid}
+        run_type: {type: string, enum: [scan, brief, case_analysis, report, report_narrative, tool_execution, verification]}
+        trigger_type: {type: string, enum: [startup, scheduled, manual, retry, approval]}
+        state: {$ref: "#/components/schemas/RunState"}
+        workflow_key: {type: string}
+        workflow_version: {type: string}
+        policy_version: {type: integer}
+        attempt: {type: integer, minimum: 0}
+        error_code: {type: [string, "null"]}
+        error_summary: {type: [string, "null"]}
+        created_at: {type: string, format: date-time}
+        started_at: {type: [string, "null"], format: date-time}
+        finished_at: {type: [string, "null"], format: date-time}
+    RunDetail:
+      allOf:
+        - $ref: "#/components/schemas/RunSummary"
+        - type: object
+          required: [progress, budgets, counters, trace_id]
+          properties:
+            progress:
+              type: object
+              additionalProperties: false
+              required: [stage, completed_steps]
+              properties:
+                stage: {type: string}
+                completed_steps: {type: integer, minimum: 0}
+                total_steps: {type: [integer, "null"], minimum: 0}
+            budgets: {type: object, additionalProperties: {type: integer}}
+            counters: {type: object, additionalProperties: {type: integer}}
+            trace_id: {type: string, format: uuid}
+            result_ref: {$ref: "#/components/schemas/ResultRef"}
+    ResultRef:
+      type: [object, "null"]
+      additionalProperties: false
+      properties:
+        result_type: {type: string}
+        result_id: {type: string, format: uuid}
+    OperationEvent:
+      type: object
+      additionalProperties: false
+      required: [sequence, event_type, actor_type, trace_id, payload_redacted, payload_hash, occurred_at]
+      properties:
+        sequence: {type: integer, minimum: 1}
+        event_type: {type: string}
+        actor_type: {type: string, enum: [system, user, model, tool]}
+        actor_id: {type: [string, "null"]}
+        trace_id: {type: string, format: uuid}
+        request_id: {type: [string, "null"]}
+        payload_redacted: {type: object, additionalProperties: true}
+        payload_hash: {type: string}
+        occurred_at: {type: string, format: date-time}
+    PeriodType:
+      type: string
+      enum: [day, week, month]
+    ReportRequest:
+      type: object
+      additionalProperties: false
+      required: [period_type, anchor_date, include_narrative]
+      properties:
+        period_type: {$ref: "#/components/schemas/PeriodType"}
+        anchor_date:
+          type: string
+          format: date
+          description: Any date inside the requested natural period in Venue.timezone.
+        include_narrative: {type: boolean, default: true}
+    ReportSummary:
+      type: object
+      required: [id, run_id, period_type, period_start, period_end, effective_end, period_state, generated_at, narrative_state, evidence_hash]
+      properties:
+        id: {type: string, format: uuid}
+        run_id: {type: string, format: uuid}
+        period_type: {$ref: "#/components/schemas/PeriodType"}
+        period_start: {type: string, format: date-time}
+        period_end: {type: string, format: date-time}
+        effective_end: {type: string, format: date-time}
+        period_state: {type: string, enum: [complete, in_progress]}
+        generated_at: {type: string, format: date-time}
+        narrative_state: {type: string, enum: [not_requested, queued, available, unavailable, failed]}
+        evidence_hash: {type: string}
+    OperationsReportSnapshot:
+      allOf:
+        - $ref: "#/components/schemas/ReportSummary"
+        - type: object
+          required: [business_timezone, comparison_status, policy_version, metric_version, anomaly_rule_version, court_capacity_method, access_projection, metrics, breakdowns, anomalies, source_refs, narrative]
+          properties:
+            business_timezone: {type: string}
+            comparison_start: {type: [string, "null"], format: date-time}
+            comparison_end: {type: [string, "null"], format: date-time}
+            comparison_status: {type: string, enum: [available, insufficient_data, zero_baseline, unavailable]}
+            policy_version: {type: integer}
+            metric_version: {type: string}
+            anomaly_rule_version: {type: string}
+            court_capacity_method:
+              type: string
+              const: commercial_usage_over_business_hours_minus_court_blocks
+            access_projection: {$ref: "#/components/schemas/ReportAccessProjection"}
+            metrics:
+              type: array
+              items: {$ref: "#/components/schemas/ReportMetric"}
+            breakdowns: {type: object, additionalProperties: true}
+            anomalies:
+              type: array
+              items: {$ref: "#/components/schemas/ReportAnomaly"}
+            source_refs:
+              type: array
+              items: {$ref: "#/components/schemas/SourceRef"}
+            narrative: {$ref: "#/components/schemas/ReportNarrative"}
+    ReportAccessProjection:
+      type: object
+      additionalProperties: false
+      required: [financial_metrics_included, payroll_metrics_included, omitted_sections]
+      properties:
+        financial_metrics_included: {type: boolean}
+        payroll_metrics_included: {type: boolean}
+        omitted_sections:
+          type: array
+          uniqueItems: true
+          items: {type: string, enum: [financial, payroll, receivables, source_breakdowns]}
+    ReportMetric:
+      type: object
+      additionalProperties: false
+      required: [metric_ref, metric_key, scope, unit, value, display_precision, calculated_at, source_refs, data_status]
+      properties:
+        metric_ref: {type: string, pattern: "^[a-z0-9_.:-]+$"}
+        metric_key: {type: string}
+        scope: {type: string, enum: [period, as_of]}
+        unit: {type: string, enum: [cny, count, lesson_unit, hour, ratio]}
+        value: {type: string, pattern: "^-?[0-9]+(\\.[0-9]+)?$"}
+        display_precision: {type: integer, minimum: 0, maximum: 6}
+        calculated_at: {type: string, format: date-time}
+        source_refs:
+          type: array
+          items: {$ref: "#/components/schemas/SourceRef"}
+        data_status: {type: string, enum: [complete, partial, insufficient, data_quality_issue]}
+    ReportAnomaly:
+      type: object
+      additionalProperties: false
+      required: [anomaly_id, rule_key, severity, metric_refs, threshold, comparison, evidence, data_sufficiency]
+      properties:
+        anomaly_id: {type: string}
+        rule_key: {type: string}
+        severity: {$ref: "#/components/schemas/Severity"}
+        metric_refs:
+          type: array
+          items: {type: string}
+        threshold: {type: object, additionalProperties: true}
+        comparison: {type: object, additionalProperties: true}
+        evidence: {type: object, additionalProperties: true}
+        data_sufficiency: {type: string, enum: [sufficient, insufficient, not_applicable]}
+    ReportNarrative:
+      type: object
+      additionalProperties: false
+      required: [state, summary, anomaly_explanations, recommendations, caveats]
+      properties:
+        state: {type: string, enum: [not_requested, queued, available, unavailable, failed]}
+        summary: {type: [string, "null"]}
+        anomaly_explanations:
+          type: array
+          items: {$ref: "#/components/schemas/NarrativeStatement"}
+        recommendations:
+          type: array
+          items: {$ref: "#/components/schemas/NarrativeStatement"}
+        caveats:
+          type: array
+          items: {type: string}
+        model_profile: {type: [string, "null"]}
+        prompt_version: {type: [string, "null"]}
+    NarrativeStatement:
+      type: object
+      additionalProperties: false
+      required: [text_template, metric_refs]
+      properties:
+        text_template: {type: string, maxLength: 2000}
+        metric_refs:
+          type: array
+          uniqueItems: true
+          items: {type: string}
+        anomaly_ids:
+          type: array
+          uniqueItems: true
+          items: {type: string}
+    ReconciliationInvariant:
+      type: object
+      additionalProperties: false
+      required: [key, expected, actual, passed]
+      properties:
+        key: {type: string}
+        expected: {type: string}
+        actual: {type: string}
+        passed: {type: boolean}
+    ReconciliationAffectedRef:
+      type: object
+      additionalProperties: false
+      required: [kind, id]
+      properties:
+        kind: {type: string}
+        id: {type: string}
+        version: {type: [integer, "null"], minimum: 1}
+    ReconciliationRepairEntryPoint:
+      type: object
+      additionalProperties: false
+      required: [label, route]
+      properties:
+        label: {type: string}
+        route: {type: string, pattern: "^/"}
+    ReconciliationImpact:
+      type: object
+      additionalProperties: false
+      required: [affected_amount, affected_lesson_units, affected_schedules, downstream_records]
+      properties:
+        affected_amount: {$ref: "#/components/schemas/DecimalString"}
+        affected_lesson_units: {type: integer, minimum: 0}
+        affected_schedules: {type: integer, minimum: 0}
+        downstream_records: {type: integer, minimum: 0}
+    ReconciliationResult:
+      type: object
+      additionalProperties: false
+      required: [issue_id, rule_key, rule_version, compatible_from_version, result, severity, subject_type, subject_id, affected_refs, invariants, impact, repair_entry_points, automatic_repair_available]
+      properties:
+        issue_id: {type: string, format: uuid}
+        rule_key: {type: string}
+        rule_version: {type: integer, minimum: 1}
+        compatible_from_version: {type: integer, minimum: 1}
+        result: {type: string, enum: [passed, failed, indeterminate]}
+        severity: {$ref: "#/components/schemas/Severity"}
+        subject_type: {type: string}
+        subject_id: {type: string}
+        affected_refs:
+          type: array
+          items: {$ref: "#/components/schemas/ReconciliationAffectedRef"}
+        invariants:
+          type: array
+          items: {$ref: "#/components/schemas/ReconciliationInvariant"}
+        impact: {$ref: "#/components/schemas/ReconciliationImpact"}
+        repair_entry_points:
+          type: array
+          items: {$ref: "#/components/schemas/ReconciliationRepairEntryPoint"}
+        automatic_repair_available: {type: boolean, const: false}
+    ReconciliationContext:
+      type: object
+      additionalProperties: false
+      required: [case_id, case_state, failure_count, result, deterministic_impact_order, automatic_repair_available]
+      properties:
+        case_id: {type: string, format: uuid}
+        case_state: {$ref: "#/components/schemas/CaseState"}
+        failure_count: {type: integer, minimum: 1}
+        result: {$ref: "#/components/schemas/ReconciliationResult"}
+        deterministic_impact_order:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [key, value]
+            properties:
+              key: {type: string}
+              value: {}
+        automatic_repair_available: {type: boolean, const: false}
+    ReplacementCandidateRequest:
+      type: object
+      additionalProperties: false
+      required: [window_start, window_end, expected_case_version]
+      properties:
+        window_start: {type: string, format: date-time}
+        window_end: {type: string, format: date-time}
+        expected_case_version: {type: integer, minimum: 1}
+        max_candidates: {type: integer, minimum: 1, maximum: 50, default: 20}
+    ReplacementResourcePlan:
+      type: object
+      additionalProperties: false
+      required: [resource_plan_id, session_id, session_version, resource_policy_version, starts_at, ends_at, coach_ids, court_ids, required_court_count, conflict_checked_at, evidence_hash, expires_at, student_availability_verified]
+      properties:
+        resource_plan_id: {type: string, format: uuid}
+        session_id: {type: string, format: uuid}
+        session_version: {type: integer, minimum: 1}
+        resource_policy_version: {type: integer, minimum: 1}
+        starts_at: {type: string, format: date-time}
+        ends_at: {type: string, format: date-time}
+        coach_ids:
+          type: array
+          minItems: 1
+          items: {type: string, format: uuid}
+        court_ids:
+          type: array
+          minItems: 1
+          items: {type: string, format: uuid}
+        required_court_count: {type: integer, minimum: 1}
+        conflict_checked_at: {type: string, format: date-time}
+        evidence_hash: {type: string}
+        expires_at: {type: string, format: date-time}
+        student_availability_verified: {type: boolean, const: false}
+        ranking_explanation: {type: [string, "null"]}
+    ReplacementProposal:
+      type: object
+      additionalProperties: false
+      required: [tool_call_id, approval, state]
+      properties:
+        tool_call_id: {type: string, format: uuid}
+        state: {type: string, const: awaiting_approval}
+        approval: {$ref: "#/components/schemas/Approval"}
+    ApprovalState:
+      type: string
+      enum: [pending, approved, rejected, expired, stale, cancelled]
+    Approval:
+      type: object
+      additionalProperties: false
+      required: [id, tool_call_id, case_id, policy_version, approval_policy, risk_level, action_summary, impact_snapshot, input_hash, subject_versions, required_capability, state, expires_at, version, created_at]
+      properties:
+        id: {type: string, format: uuid}
+        tool_call_id: {type: string, format: uuid}
+        case_id: {type: [string, "null"], format: uuid}
+        policy_version: {type: integer}
+        approval_policy: {type: string, enum: [explicit_confirmation, mandatory_approval]}
+        risk_level: {type: string, enum: [low, medium, high]}
+        action_summary: {type: string}
+        impact_snapshot: {type: object, additionalProperties: true}
+        input_hash: {type: string}
+        subject_versions: {type: object, additionalProperties: {type: integer}}
+        required_capability: {type: string}
+        state: {$ref: "#/components/schemas/ApprovalState"}
+        expires_at: {type: string, format: date-time}
+        decided_by: {type: [string, "null"], format: uuid}
+        decision_reason: {type: [string, "null"]}
+        decided_at: {type: [string, "null"], format: date-time}
+        version: {type: integer, minimum: 1}
+        created_at: {type: string, format: date-time}
+    ApprovalDecisionInput:
+      type: object
+      additionalProperties: false
+      required: [expected_approval_version, expected_input_hash, reason]
+      properties:
+        expected_approval_version: {type: integer, minimum: 1}
+        expected_input_hash: {type: string, minLength: 16}
+        reason: {type: string, minLength: 1, maxLength: 500}
+    ApprovalDecisionResult:
+      type: object
+      additionalProperties: false
+      required: [approval, execution_run]
+      properties:
+        approval: {$ref: "#/components/schemas/Approval"}
+        execution_run:
+          oneOf:
+            - $ref: "#/components/schemas/RunSummary"
+            - type: "null"
+    OperationsPolicyDraftInput:
+      type: object
+      additionalProperties: false
+      required: [schema_version, config]
+      properties:
+        schema_version: {type: string, const: "1"}
+        config: {$ref: "#/components/schemas/OperationsPolicyConfig"}
+    OperationsPolicy:
+      type: object
+      additionalProperties: false
+      required: [id, policy_key, policy_version, schema_version, config, config_hash, state, effective_from, created_by, created_at]
+      properties:
+        id: {type: string, format: uuid}
+        policy_key: {type: string, const: default_operations}
+        policy_version: {type: integer, minimum: 1}
+        schema_version: {type: string}
+        config: {$ref: "#/components/schemas/OperationsPolicyConfig"}
+        config_hash: {type: string}
+        state: {type: string, enum: [draft, active, retired]}
+        effective_from: {type: string, format: date-time}
+        effective_to: {type: [string, "null"], format: date-time}
+        created_by: {type: string, format: uuid}
+        activated_by: {type: [string, "null"], format: uuid}
+        activated_at: {type: [string, "null"], format: date-time}
+        created_at: {type: string, format: date-time}
+    OperationsPolicyConfig:
+      type: object
+      additionalProperties: false
+      required: [receivable_followup, renewal, attendance, replacement, reports, runtime]
+      properties:
+        receivable_followup: {type: object, additionalProperties: false, required: [aging_days, escalation_days, max_attempts], properties: {aging_days: {type: integer, minimum: 0, maximum: 3650}, escalation_days: {type: integer, minimum: 1, maximum: 3650}, max_attempts: {type: integer, minimum: 1, maximum: 100}}}
+        renewal: {type: object, additionalProperties: false, required: [fixed_class_days, private_package_expiry_days, private_package_remaining_units, cadence_days], properties: {fixed_class_days: {type: integer, minimum: 1, maximum: 365}, private_package_expiry_days: {type: integer, minimum: 1, maximum: 365}, private_package_remaining_units: {type: integer, minimum: 0, maximum: 1000}, cadence_days: {type: integer, minimum: 1, maximum: 365}}}
+        attendance: {type: object, additionalProperties: false, required: [grace_hours], properties: {grace_hours: {type: integer, minimum: 0, maximum: 720}}}
+        replacement: {type: object, additionalProperties: false, required: [window_days, slot_minutes, resource_mode], properties: {window_days: {type: integer, minimum: 1, maximum: 90}, slot_minutes: {type: integer, enum: [15, 30, 60]}, resource_mode: {type: string, const: original_only}}}
+        reports: {type: object, additionalProperties: false, required: [min_sample_size, income_decline, refund_ratio, expense_growth, outstanding, cancellation_rate, low_utilization, coach_pending], properties: {min_sample_size: {type: integer, minimum: 1}, income_decline: {$ref: "#/components/schemas/DecimalString"}, refund_ratio: {$ref: "#/components/schemas/DecimalString"}, expense_growth: {$ref: "#/components/schemas/DecimalString"}, outstanding: {$ref: "#/components/schemas/DecimalString"}, cancellation_rate: {$ref: "#/components/schemas/DecimalString"}, low_utilization: {$ref: "#/components/schemas/DecimalString"}, coach_pending: {$ref: "#/components/schemas/DecimalString"}}}
+        runtime: {type: object, additionalProperties: false, required: [case_sla_days, approval_expiry_minutes, retry_limit], properties: {case_sla_days: {type: integer, minimum: 1, maximum: 365}, approval_expiry_minutes: {type: integer, minimum: 1, maximum: 10080}, retry_limit: {type: integer, minimum: 0, maximum: 10}}}
+    DecimalString:
+      type: string
+      pattern: "^-?[0-9]+(\\.[0-9]+)?$"

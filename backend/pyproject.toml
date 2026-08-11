@@ -1,0 +1,71 @@
+[project]
+name = "shuttlecube-backend"
+version = "0.1.0"
+description = "ShuttleCube badminton operations API"
+requires-python = ">=3.14"
+dependencies = [
+  "alembic>=1.16.4",
+  "argon2-cffi>=25.1.0",
+  "boto3>=1.39.0",
+  "fastapi>=0.116.1",
+  "openai>=2.0.0",
+  "psycopg[binary]>=3.2.9",
+  "pydantic-settings>=2.10.1",
+  "python-multipart>=0.0.20",
+  "sqlalchemy>=2.0.41",
+  "uvicorn[standard]>=0.35.0"
+]
+
+[project.scripts]
+shuttlecube = "shuttlecube.cli:main"
+shuttlecube-desktop = "shuttlecube.desktop:main"
+
+[project.optional-dependencies]
+desktop = [
+  "pywebview>=6.0",
+]
+
+[dependency-groups]
+dev = [
+  "httpx>=0.28.1",
+  "hypothesis>=6.136.3",
+  "mypy>=1.17.0",
+  "pytest>=8.4.1",
+  "pytest-cov>=6.2.1",
+  "pyinstaller>=6.14.2",
+  "ruff>=0.12.5",
+  "testcontainers[postgres]>=4.10.0"
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/shuttlecube"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+markers = [
+  "live_model: calls a configured live model provider and is excluded from normal CI",
+  "operations_core: focused high-risk intelligent-operations regression",
+]
+
+[tool.ruff]
+target-version = "py314"
+line-length = 100
+extend-exclude = ["alembic/versions"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+ignore = ["E501", "E701", "E702"]
+
+[tool.mypy]
+python_version = "3.14"
+strict = true
+plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+module = ["boto3", "boto3.*"]
+ignore_missing_imports = true

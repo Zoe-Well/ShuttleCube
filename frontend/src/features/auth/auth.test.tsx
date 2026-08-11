@@ -1,0 +1,3 @@
+import { render,screen } from "@testing-library/react";import { QueryClient,QueryClientProvider } from "@tanstack/react-query";import { MemoryRouter } from "react-router";import { describe,expect,it,vi } from "vitest";import { LoginPage } from "./login-page";
+vi.mock("./session",()=>({useSession:()=>null,useLogin:()=>({mutate:vi.fn(),isPending:false,error:null})}));
+describe("login",()=>{it("renders internal login form",()=>{render(<QueryClientProvider client={new QueryClient()}><MemoryRouter><LoginPage/></MemoryRouter></QueryClientProvider>);expect(screen.getByRole("heading",{name:"登录管理后台"})).toBeInTheDocument();expect(screen.getByRole("button",{name:"登录系统"})).toBeInTheDocument()})});

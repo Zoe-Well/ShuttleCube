@@ -1,0 +1,22 @@
+{
+  "name": "shuttlecube-workspace",
+  "private": true,
+  "packageManager": "pnpm@10.14.0",
+  "scripts": {
+    "dev": "pnpm --dir frontend dev",
+    "build": "pnpm --dir frontend build",
+    "lint": "pnpm --dir frontend lint",
+    "typecheck": "pnpm --dir frontend typecheck",
+    "test": "pnpm --dir frontend test",
+    "api:generate": "node scripts/generate-api-client.mjs",
+    "api:check": "node scripts/check-api-client.mjs",
+    "test:e2e": "playwright test",
+    "test:operations:core": "uv run --project backend pytest -q backend/tests/contract/test_operations_tools.py backend/tests/integration/operations/test_capabilities.py backend/tests/integration/operations/test_policy_activation.py backend/tests/integration/operations/test_model_enablement.py backend/tests/integration/operations/test_followup_activities.py backend/tests/integration/operations/test_report_snapshots.py backend/tests/integration/operations/test_replacement_approval.py backend/tests/integration/operations/test_reconciliation_cases.py",
+    "test:operations:all": "uv run --project backend pytest backend/tests/unit/operations backend/tests/integration/operations backend/tests/contract"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.54.1",
+    "openapi-typescript": "^7.8.0",
+    "yaml": "^2.8.0"
+  }
+}

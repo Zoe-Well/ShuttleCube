@@ -1,0 +1,11 @@
+"""unified scheduling"""
+from alembic import op
+import sqlalchemy as sa
+revision="0004_scheduling"; down_revision="0003_directory"; branch_labels=None; depends_on=None
+def upgrade() -> None:
+    op.create_table("schedule_entries",sa.Column("source_type",sa.String(40),nullable=False),sa.Column("source_id",sa.String(36),nullable=False),sa.Column("title",sa.String(200),nullable=False),sa.Column("starts_at",sa.DateTime(timezone=True),nullable=False),sa.Column("ends_at",sa.DateTime(timezone=True),nullable=False),sa.Column("status",sa.String(30),nullable=False),sa.Column("original_entry_id",sa.String(36),sa.ForeignKey("schedule_entries.id")),sa.Column("cancellation_reason",sa.Text()),sa.Column("notes",sa.Text()),sa.Column("id",sa.String(36),primary_key=True),sa.Column("created_at",sa.DateTime(timezone=True),nullable=False),sa.Column("updated_at",sa.DateTime(timezone=True),nullable=False),sa.Column("version",sa.Integer(),nullable=False))
+    op.create_table("schedule_allocations",sa.Column("schedule_entry_id",sa.String(36),sa.ForeignKey("schedule_entries.id",ondelete="CASCADE"),nullable=False),sa.Column("resource_type",sa.String(20),nullable=False),sa.Column("resource_id",sa.String(36),nullable=False),sa.Column("starts_at",sa.DateTime(timezone=True),nullable=False),sa.Column("ends_at",sa.DateTime(timezone=True),nullable=False),sa.Column("active",sa.Boolean(),nullable=False),sa.Column("id",sa.String(36),primary_key=True),sa.UniqueConstraint("schedule_entry_id","resource_type","resource_id",name="uq_schedule_resource"))
+    op.create_index("ix_allocation_conflict","schedule_allocations",["resource_type","resource_id","starts_at","ends_at"])
+    op.create_table("court_blocks",sa.Column("reason",sa.String(200),nullable=False),sa.Column("starts_at",sa.DateTime(timezone=True),nullable=False),sa.Column("ends_at",sa.DateTime(timezone=True),nullable=False),sa.Column("status",sa.String(20),nullable=False),sa.Column("notes",sa.Text()),sa.Column("id",sa.String(36),primary_key=True),sa.Column("created_at",sa.DateTime(timezone=True),nullable=False),sa.Column("updated_at",sa.DateTime(timezone=True),nullable=False),sa.Column("version",sa.Integer(),nullable=False))
+def downgrade() -> None:
+    op.drop_table("court_blocks"); op.drop_table("schedule_allocations"); op.drop_table("schedule_entries")

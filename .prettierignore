@@ -1,0 +1,9 @@
+node_modules/
+dist/
+build/
+coverage/
+frontend/src/api/generated/
+pnpm-lock.yaml
+package-lock.json
+yarn.lock
+prototypes/

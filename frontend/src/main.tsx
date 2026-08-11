@@ -1,0 +1,2 @@
+import React from "react"; import ReactDOM from "react-dom/client"; import { RouterProvider } from "react-router"; import "./app/theme.css"; import { Providers } from "./app/providers"; import { router } from "./app/router"; import { SessionProvider } from "./features/auth/session";
+ReactDOM.createRoot(document.getElementById("root")!).render(<React.StrictMode><Providers><SessionProvider><RouterProvider router={router}/></SessionProvider></Providers></React.StrictMode>);
