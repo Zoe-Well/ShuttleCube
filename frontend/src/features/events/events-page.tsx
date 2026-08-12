@@ -13,6 +13,7 @@ import { ReceivableDetail } from "@/features/finance/receivable-detail";
 import type { ScheduleItem } from "@/features/schedule/schedule-calendar";
 import { ScheduleDetails } from "@/features/schedule/schedule-details";
 import { formatCourtNames, useCourtDirectory } from "@/features/schedule/court-display";
+import { formatBeijingDate, formatBeijingTime } from "@/lib/beijing-time";
 
 type Event = {
   id: string;
@@ -147,12 +148,9 @@ export function EventsPage() {
                   <td className="table-primary">{item.name}</td>
                   <td>{eventNames[item.event_type] ?? item.event_type}</td>
                   <td>
-                    <div>{new Date(item.starts_at).toLocaleDateString("zh-CN")}</div>
+                    <div>{formatBeijingDate(item.starts_at)}</div>
                     <div className="table-secondary">
-                      {new Date(item.starts_at).toLocaleTimeString("zh-CN", {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
+                      {formatBeijingTime(item.starts_at)}
                     </div>
                   </td>
                   <td>{formatCourtNames(item.court_ids, courts.data)}</td>

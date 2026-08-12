@@ -1,4 +1,14 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { api, setCsrfToken } from "./client";
+import { describe, expect, it, vi } from "vitest";
 
-describe("api client",()=>{beforeEach(()=>vi.restoreAllMocks());it("sends same-origin credentials and csrf",async()=>{const fetchMock=vi.spyOn(globalThis,"fetch").mockResolvedValue(new Response(JSON.stringify({ok:true}),{status:200,headers:{"Content-Type":"application/json"}}));setCsrfToken("csrf");await api("/test",{method:"POST",body:JSON.stringify({})});expect(fetchMock).toHaveBeenCalledWith("/api/v1/test",expect.objectContaining({credentials:"include"}));expect((fetchMock.mock.calls[0][1]?.headers as Headers).get("X-CSRF-Token")).toBe("csrf")})});
+import { api } from "./client";
+
+describe("API client errors", () => {
+  it("shows a readable message when the server returns a plain-text 500", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("Internal Server Error", { status: 500 })));
+
+    await expect(api("/operations/policies/example:activate", { method: "POST" }))
+      .rejects.toThrow("服务器暂时无法完成请求，请稍后重试");
+
+    vi.unstubAllGlobals();
+  });
+});

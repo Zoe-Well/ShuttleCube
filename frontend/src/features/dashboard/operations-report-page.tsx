@@ -4,6 +4,7 @@ import { useState } from "react";
 
 import { api } from "@/api/client";
 import { MetricCard, PageHeader, Panel } from "@/components/operations/page";
+import { beijingDateKey } from "@/lib/beijing-time";
 import { OperationsCharts } from "./operations-charts";
 
 type FixedClassFinance = {
@@ -36,7 +37,7 @@ type Report = {
 };
 
 export function OperationsReportPage() {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = beijingDateKey();
   const [from, setFrom] = useState(`${today.slice(0, 8)}01`);
   const [to, setTo] = useState(today);
   const query = useQuery({

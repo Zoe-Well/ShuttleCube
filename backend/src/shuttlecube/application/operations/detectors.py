@@ -204,6 +204,19 @@ def detect_overdue_attendance(
     for session, fixed_class in rows:
         ended_at = _aware(session.scheduled_end)
         overdue_hours = max(int((_aware(now) - ended_at).total_seconds() // 3600), 0)
+        active_enrollment_count = int(
+            db.scalar(
+                select(func.count())
+                .select_from(Enrollment)
+                .where(
+                    Enrollment.organization_id == scope.organization_id,
+                    Enrollment.venue_id == scope.venue_id,
+                    Enrollment.fixed_class_id == fixed_class.id,
+                    Enrollment.status == "active",
+                )
+            )
+            or 0
+        )
         result.append(
             build_evidence(
                 scope=scope,
@@ -222,6 +235,12 @@ def detect_overdue_attendance(
                     "grace_hours": config.attendance.grace_hours,
                     "overdue_hours": overdue_hours,
                     "attendance_finalized": False,
+                    "active_enrollment_count": active_enrollment_count,
+                    "recommended_action": (
+                        "mark_not_held_no_enrollment"
+                        if active_enrollment_count == 0
+                        else "finalize_attendance"
+                    ),
                 },
                 source_refs=(
                     SourceReference(kind="class_session", id=session.id, version=session.version),

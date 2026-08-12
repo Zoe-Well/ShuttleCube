@@ -21,18 +21,18 @@ export function OperationsCapabilityBoundary({
 
 export function OperationsNavigation({ context }: { context: OperationsContext }) {
   const items = [
-    { label: "运营案件", path: "/operations", capability: "operations.case.read" },
-    { label: "经营报告", path: "/reports", capability: "operations.report.read" },
+    { label: "待处理事项", path: "/operations", capabilities: ["operations.case.read"] },
+    { label: "经营报告", path: "/reports", capabilities: ["operations.report.read"] },
     {
-      label: "权限与模型设置",
+      label: "运营设置",
       path: "/operations/settings",
-      capability: "operations.model.manage",
+      capabilities: ["operations.policy.manage", "operations.model.manage"],
     },
   ];
   return (
     <nav aria-label="智能运营">
       {items
-        .filter((item) => hasOperationsCapability(context, item.capability))
+        .filter((item) => item.capabilities.some((capability) => hasOperationsCapability(context, capability)))
         .map((item) => (
           <Link key={item.path} to={item.path}>
             {item.label}

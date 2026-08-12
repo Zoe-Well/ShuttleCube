@@ -31,6 +31,9 @@ frontend/vite.config.d.ts
 .vite/
 .cache/
 .test-tmp/
+.desktop-dev-data/
+backups/
+backend/shuttlecube-backups/
 playwright-report/
 test-results/
 prototypes/ui-comparison/

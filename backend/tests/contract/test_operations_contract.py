@@ -31,9 +31,21 @@ def test_foundational_operations_routes_are_exposed_with_stable_operation_ids(
             "get": "getOperationsModelSetting",
             "patch": "updateOperationsModelSetting",
         },
+        "/api/v1/operations/settings/model/credential": {
+            "put": "configureOperationsModelCredential",
+            "delete": "deleteOperationsModelCredential",
+        },
         "/api/v1/operations/policies": {
             "get": "listOperationsPolicies",
             "post": "createOperationsPolicyDraft",
+        },
+        "/api/v1/operations/policies/{policy_id}": {
+            "get": "getOperationsPolicy",
+            "patch": "updateOperationsPolicyDraft",
+            "delete": "deleteOperationsPolicyDraft",
+        },
+        "/api/v1/operations/policies/{policy_id}:copy": {
+            "post": "copyOperationsPolicyDraft"
         },
         "/api/v1/operations/policies/{policy_id}:activate": {
             "post": "activateOperationsPolicy"
@@ -41,6 +53,12 @@ def test_foundational_operations_routes_are_exposed_with_stable_operation_ids(
         "/api/v1/operations/runs/{run_id}": {"get": "getOperationRun"},
         "/api/v1/operations/runs/{run_id}/events": {
             "get": "listOperationRunEvents"
+        },
+        "/api/v1/operations/cases/{case_id}/action-context": {
+            "get": "getOperationCaseActionContext"
+        },
+        "/api/v1/operations/cases/{case_id}:verify": {
+            "post": "verifyOperationCaseNow"
         },
     }
 
@@ -57,6 +75,14 @@ def test_operations_contract_never_exposes_provider_credentials(client: TestClie
     assert set(setting["required"]) == {
         "model_enabled",
         "provider_configured",
+        "provider_editable",
+        "provider_source",
+        "provider_verified_at",
+        "provider_key",
+        "provider_label",
+        "provider_base_url",
+        "provider_api_mode",
+        "provider_model_profile",
         "updated_at",
         "version",
     }

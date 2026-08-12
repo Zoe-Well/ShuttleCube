@@ -82,5 +82,6 @@ export function analyzeScheduleTime(
 }
 
 export function toApiDateTime(value: string) {
-  return new Date(value).toISOString();
+  return beijingDateTimeInputToIso(value);
 }
+import { beijingDateTimeInputToIso } from "@/lib/beijing-time";

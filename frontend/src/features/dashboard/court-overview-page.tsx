@@ -6,18 +6,13 @@ import { api } from "@/api/client";
 import { PageHeader, Panel } from "@/components/operations/page";
 import type { ScheduleItem } from "@/features/schedule/schedule-calendar";
 import { useCourtDirectory } from "@/features/schedule/court-display";
-import { localDateKey } from "@/lib/utils";
+import { beijingDayRange } from "@/lib/beijing-time";
 import { CourtUsageOverview } from "./court-usage-overview";
 
 export function CourtOverviewPage() {
   const courts = useCourtDirectory();
-  const start = new Date();
-  start.setHours(0, 0, 0, 0);
-  const end = new Date(start);
-  end.setDate(end.getDate() + 1);
-  const usageWindowStart = new Date(start);
-  usageWindowStart.setHours(8, 0, 0, 0);
-  const businessDate = localDateKey(start);
+  const { date: businessDate, start, end } = beijingDayRange();
+  const usageWindowStart = new Date(start.getTime() + 8 * 60 * 60 * 1000);
   const schedule = useQuery({
     queryKey: ["court-overview", businessDate],
     queryFn: () =>

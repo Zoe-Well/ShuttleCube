@@ -1,4 +1,7 @@
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
+from zoneinfo import ZoneInfo
+
+BEIJING_TIMEZONE = ZoneInfo("Asia/Shanghai")
 
 
 def as_utc(value: datetime) -> datetime:
@@ -6,3 +9,7 @@ def as_utc(value: datetime) -> datetime:
     if value.tzinfo is None:
         return value.replace(tzinfo=UTC)
     return value.astimezone(UTC)
+
+
+def beijing_today() -> date:
+    return datetime.now(BEIJING_TIMEZONE).date()

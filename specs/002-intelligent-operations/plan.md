@@ -10,7 +10,7 @@
 
 Clarification 后的固定边界是：外部模型按 Venue 默认关闭并由负责人显式启用；前台／运营只能看到当前跟进案件必要的单笔欠费信息，不能通过报告、Narrative 或 Trace 获取全馆财务／工资；Detector 只把案件放入确定性 capability 队列，具体人员由认领或具备 `operations.case.assign` 的负责人分配；补排 Agent 只能选择已生成并冻结的 resource_plan；CourtBlock 作为不可售容量从利用率分母扣除，不计经营使用。
 
-首个模型适配器采用 OpenAI Python SDK 的 Responses API，通过项目内 `ModelClient` Port 隔离 provider。计划／诊断和报告 Narrative 使用严格 JSON Schema／Pydantic Structured Outputs；需要模型选择只读 Tool 时使用 strict function calling。业务 Tool 仍由 ShuttleCube Registry、Scope、Policy、权限和审批执行，不采用 OpenAI Agents SDK、LangGraph、MCP、Celery、Redis、Temporal、向量数据库或独立 AI Gateway。
+模型适配器通过项目内 `ModelClient` Port 隔离 provider：OpenAI 使用 Responses API，DeepSeek 使用 Chat Completions API，自定义 OpenAI 兼容服务可选择协议。计划／诊断和报告 Narrative 使用 JSON Schema／Pydantic 本地校验；业务 Tool 仍由 ShuttleCube Registry、Scope、Policy、权限和审批执行，不采用 OpenAI Agents SDK、LangGraph、MCP、Celery、Redis、Temporal、向量数据库或独立 AI Gateway。
 
 ## Technical Context
 
@@ -66,7 +66,7 @@ Phase 1 设计没有突破上述 gate。新增表仍在同一数据库；唯一�
 
 ### 4. Model and Tool boundary
 
-`ModelClient` 只在当前 Venue 已显式启用时接受脱敏、尺寸受限且按目标受众 capability 投影的 Pydantic 输入，并返回严格结构化结果。OpenAI adapter 使用 Responses API：报告和最终诊断采用 `text.format` Structured Outputs；需要模型选择已注册只读 Tool 时采用 strict function calling。模型看到的是 Registry 投影，不得到 ORM、数据库连接、任意 URL、文件、凭证或动态工具。
+`ModelClient` 只在当前 Venue 已显式启用时接受脱敏、尺寸受限且按目标受众 capability 投影的 Pydantic 输入，并返回结构化结果。OpenAI adapter 使用 Responses API 的 Structured Outputs；DeepSeek 和选择 Chat Completions 的自定义服务在提示中携带 JSON Schema，并对返回 JSON 进行 Pydantic 本地校验。模型看到的是 Registry 投影，不得到 ORM、数据库连接、文件、凭证或动态工具；自定义基础地址只用于用户明确配置的模型连接。
 
 ### 5. Controlled side effects
 

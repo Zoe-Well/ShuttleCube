@@ -8,6 +8,7 @@ import { Drawer } from "@/components/operations/drawer";
 import { EmptyState } from "@/components/operations/empty-state";
 import { PageHeader, Panel } from "@/components/operations/page";
 import { StatusBadge } from "@/components/status/status-badge";
+import { formatBeijing, formatBusinessDate } from "@/lib/beijing-time";
 import { localDateKey } from "@/lib/utils";
 import { ClassForm, type ClassInput } from "./class-form";
 
@@ -32,7 +33,7 @@ type EndingWithinDays = 7 | 15 | 30;
 
 function dateTime(value: string | null) {
   return value
-    ? new Date(value).toLocaleString("zh-CN", {
+    ? formatBeijing(value, {
         month: "2-digit",
         day: "2-digit",
         hour: "2-digit",
@@ -200,7 +201,7 @@ export function ClassesPage() {
                       {item.class_type === "training" ? "常规培训班" : item.class_type}
                     </div>
                   </td>
-                  <td>{new Date(item.start_date).toLocaleDateString("zh-CN")}</td>
+                  <td>{formatBusinessDate(item.start_date)}</td>
                   <td>{item.session_count} 节课</td>
                   <td>{item.capacity} 人</td>
                   <td><StatusBadge status={item.status} /></td>

@@ -5,6 +5,7 @@ import { Link } from "react-router";
 import { api } from "@/api/client";
 import { Drawer } from "@/components/operations/drawer";
 import { PageHeader, Panel } from "@/components/operations/page";
+import { formatBeijingDateTime } from "@/lib/beijing-time";
 import { AttachmentViewer } from "./attachment-viewer";
 import { ExpenseForm } from "./expense-form";
 import { OtherIncomeForm } from "./other-income-form";
@@ -69,7 +70,7 @@ export function ExpensesPage() {
             <thead><tr><th>日期</th><th>收支</th><th>分类</th><th>往来方</th><th>方式</th><th>金额</th><th>状态</th><th>操作</th></tr></thead>
             <tbody>{rows.map((item) => (
               <tr key={`${item.kind}-${item.id}`}>
-                <td>{new Date(item.occurredAt).toLocaleString("zh-CN")}</td>
+                <td>{formatBeijingDateTime(item.occurredAt)}</td>
                 <td>{item.kind === "income" ? "收入" : "支出"}</td>
                 <td>{categoryNames[item.category] ?? item.category}</td>
                 <td className="table-primary">{item.party}</td>

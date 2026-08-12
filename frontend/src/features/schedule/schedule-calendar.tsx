@@ -9,6 +9,7 @@ import { formatScheduleCourtNames, type CourtDirectoryItem } from "./court-displ
 import { bulkDeleteBlockedReason } from "./schedule-bulk";
 import { PastTimeSelectionDialog } from "./schedule-time-fields";
 import { defaultVenueHours, isPastScheduleStart, type VenueHours } from "./schedule-time";
+import { beijingDateKey, toBeijingDateTimeInput } from "@/lib/beijing-time";
 
 export type ScheduleResource = {
   type?: string;
@@ -105,8 +106,8 @@ export function ScheduleCalendar({
     return {
       id: item.id,
       title: `${item.title} · ${formatScheduleCourtNames(item, courts)}`,
-      start: item.starts_at,
-      end: item.ends_at,
+      start: toBeijingDateTimeInput(item.starts_at),
+      end: toBeijingDateTimeInput(item.ends_at),
       extendedProps: { past },
       classNames: [
         `event-${item.source_type}`,
@@ -155,6 +156,7 @@ export function ScheduleCalendar({
       }}
       height={720}
       initialView="timeGridWeek"
+      initialDate={beijingDateKey(now)}
       locale="zh-cn"
       plugins={[timeGridPlugin, interactionPlugin]}
       select={({ start, end }) => {

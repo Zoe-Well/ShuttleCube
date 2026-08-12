@@ -2,11 +2,14 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, CheckCircle2, ShieldCheck, XCircle } from "lucide-react";
 import { useState } from "react";
 
+import { formatBeijingDateTime } from "@/lib/beijing-time";
+
 import {
   decideOperationApproval,
   type OperationApproval,
   type OperationRun,
 } from "./api";
+import { approvalStateLabel, outcomeLabel, runStateLabel } from "./terminology";
 
 function frozenPlan(approval: OperationApproval) {
   const value = approval.impact_snapshot.resource_plan;
@@ -51,12 +54,12 @@ export function ApprovalCard({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h3 className="flex items-center gap-2 font-semibold text-amber-950">
-            <ShieldCheck size={18} />受控补排审批
+            <ShieldCheck size={18} />课程补排审批
           </h3>
           <p className="mt-1 text-xs text-amber-800">方案内容已经冻结；审批后仍会重新检查营业时间、课程版本与资源冲突。</p>
         </div>
         <span className="rounded-full bg-white px-2.5 py-1 text-xs font-medium text-amber-900">
-          {approval.state}
+          {approvalStateLabel(approval.state)}
         </span>
       </div>
 
@@ -66,7 +69,7 @@ export function ApprovalCard({
           <div className="rounded-lg bg-white p-3">
             <dt className="text-xs text-slate-500">补排时间</dt>
             <dd className="mt-1 font-medium">
-              {new Date(String(plan.starts_at)).toLocaleString()} 至 {new Date(String(plan.ends_at)).toLocaleString()}
+              {formatBeijingDateTime(String(plan.starts_at))} 至 {formatBeijingDateTime(String(plan.ends_at))}
             </dd>
           </div>
           <div className="rounded-lg bg-white p-3">
@@ -84,12 +87,15 @@ export function ApprovalCard({
 
       {run ? (
         <div className="mt-3 rounded-lg bg-white p-3 text-sm">
-          <div className="text-xs text-slate-500">执行进度</div>
-          <div className="mt-1 font-medium">{run.state}</div>
+          <div className="text-xs text-slate-500">处理步骤</div>
+          <div className="mt-1 font-medium">
+            等待审批 → 正在执行 → 正在核对结果 → 已完成
+          </div>
+          <div className="mt-1 text-xs text-slate-600">当前：{runStateLabel(run.state)}</div>
           {run.error_summary ? <p className="mt-1 text-xs text-red-600">{run.error_summary}</p> : null}
           {verification ? (
             <p className="mt-1 text-xs text-emerald-700">
-              确定性复核：{String(verification.outcome ?? "未知")} · {String(verification.reason_code ?? "—")}
+              结果核对：{outcomeLabel(String(verification.outcome ?? "未知"))}
             </p>
           ) : null}
         </div>
@@ -109,7 +115,7 @@ export function ApprovalCard({
               disabled={!reason.trim() || decisionPending}
               onClick={() => approve.mutate()}
             >
-              <CheckCircle2 size={15} />批准并进入受控执行
+              <CheckCircle2 size={15} />批准并执行补排
             </button>
             <button
               className="btn"

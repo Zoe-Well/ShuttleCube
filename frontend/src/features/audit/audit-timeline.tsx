@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import { api } from "@/api/client";
 import { Drawer } from "@/components/operations/drawer";
 import { PageHeader, Panel } from "@/components/operations/page";
+import { formatBeijingDateTime } from "@/lib/beijing-time";
 import { AuditDrawer, type AuditEntry } from "./audit-drawer";
 
 export function AuditTimeline() {
@@ -67,7 +68,7 @@ export function AuditTimeline() {
               onClick={() => setSelected(entries)}
             >
               <span className="text-slate-500">
-                {new Date(item.occurred_at).toLocaleString("zh-CN")}
+                {formatBeijingDateTime(item.occurred_at)}
               </span>
               <span>
                 <b>{item.action_label}</b>

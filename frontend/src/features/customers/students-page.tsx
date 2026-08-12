@@ -12,6 +12,7 @@ import {
 import { type FormEvent, useState } from "react";
 
 import { api } from "@/api/client";
+import { beijingDateKey } from "@/lib/beijing-time";
 import { Drawer } from "@/components/operations/drawer";
 import { EmptyState } from "@/components/operations/empty-state";
 import { PageHeader, Panel } from "@/components/operations/page";
@@ -308,7 +309,7 @@ function StudentEntitlementCenter({ student, onClose }: { student: Student; onCl
               className="field"
               name="enrolled_on"
               type="date"
-              defaultValue={new Date().toISOString().slice(0, 10)}
+              defaultValue={beijingDateKey()}
               required
             />
           </label>

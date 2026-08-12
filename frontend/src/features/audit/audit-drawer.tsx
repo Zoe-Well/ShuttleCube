@@ -1,4 +1,5 @@
 import { Panel } from "@/components/operations/page";
+import { formatBeijingDateTime } from "@/lib/beijing-time";
 
 export type AuditEntry = {
   id: string;
@@ -31,7 +32,7 @@ export function AuditDrawer({ entries }: { entries: AuditEntry[] }) {
           </div>
           <div>
             <dt className="text-slate-400">时间</dt>
-            <dd>{new Date(entry.occurred_at).toLocaleString("zh-CN")}</dd>
+            <dd>{formatBeijingDateTime(entry.occurred_at)}</dd>
           </div>
           <div>
             <dt className="text-slate-400">业务操作</dt>

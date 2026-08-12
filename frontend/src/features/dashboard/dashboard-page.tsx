@@ -18,7 +18,7 @@ import { Drawer } from "@/components/operations/drawer";
 import { MetricCard, PageHeader, Panel } from "@/components/operations/page";
 import { StatusBadge } from "@/components/status/status-badge";
 import { ScheduleDetails } from "@/features/schedule/schedule-details";
-import { localDateKey } from "@/lib/utils";
+import { beijingDayRange, formatBeijingTime } from "@/lib/beijing-time";
 import { PendingCards } from "./pending-cards";
 import { CourtUsageOverview } from "./court-usage-overview";
 import type { ScheduleItem } from "@/features/schedule/schedule-calendar";
@@ -61,20 +61,16 @@ export function DashboardPage() {
   const [selected, setSelected] = useState<Schedule | null>(null);
   const [endingWithinDays, setEndingWithinDays] = useState<EndingWithinDays>(30);
   const courts = useCourtDirectory();
-  const now = new Date();
-  const start = new Date(now);
-  start.setHours(0, 0, 0, 0);
-  const end = new Date(start);
-  end.setDate(end.getDate() + 1);
+  const { date: businessDate, start, end } = beijingDayRange();
   const query = useQuery({
-    queryKey: ["dashboard", localDateKey(start), endingWithinDays],
+    queryKey: ["dashboard", businessDate, endingWithinDays],
     queryFn: async (): Promise<DashboardData> => {
       const [schedule, overview] = await Promise.all([
         api<Schedule[]>(
           `/schedule?from_=${encodeURIComponent(start.toISOString())}&to=${encodeURIComponent(end.toISOString())}`,
         ),
         api<DashboardData["overview"]>(
-          `/dashboard?business_date=${localDateKey(start)}&ending_within_days=${endingWithinDays}`,
+          `/dashboard?business_date=${businessDate}&ending_within_days=${endingWithinDays}`,
         ),
       ]);
       return { schedule, overview };
@@ -82,8 +78,7 @@ export function DashboardPage() {
   });
   const data = query.data;
   const overview = data?.overview;
-  const usageWindowStart = new Date(start);
-  usageWindowStart.setHours(8, 0, 0, 0);
+  const usageWindowStart = new Date(start.getTime() + 8 * 60 * 60 * 1000);
   return (
     <section>
       <PageHeader
@@ -162,10 +157,7 @@ export function DashboardPage() {
                   type="button"
                 >
                   <time className="text-xs font-semibold text-slate-600">
-                    {new Date(item.starts_at).toLocaleTimeString("zh-CN", {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
+                    {formatBeijingTime(item.starts_at)}
                   </time>
                   <span
                     className={`size-2 rounded-full ${index === 0 ? "bg-emerald-500" : "bg-slate-300"}`}
@@ -174,10 +166,7 @@ export function DashboardPage() {
                     <div className="text-[13px] font-semibold text-slate-700">{item.title}</div>
                     <div className="mt-0.5 text-[11px] text-slate-400">
                       {sourceNames[item.source_type] ?? item.source_type} · 至{" "}
-                      {new Date(item.ends_at).toLocaleTimeString("zh-CN", {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}{" "}
+                      {formatBeijingTime(item.ends_at)}{" "}
                       · {formatScheduleCourtNames(item, courts.data)}
                     </div>
                   </div>

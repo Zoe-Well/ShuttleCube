@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { api } from "@/api/client";
@@ -59,8 +59,17 @@ vi.mock("@fullcalendar/react", () => ({
 vi.mock("@/api/client", () => ({ api: vi.fn().mockResolvedValue([]) }));
 
 afterEach(() => {
+  cleanup();
   vi.clearAllMocks();
 });
+
+function currentMondayAtEightTestId() {
+  const monday = new Date();
+  monday.setHours(0, 0, 0, 0);
+  monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7));
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `calendar-event-past-${monday.getFullYear()}-${pad(monday.getMonth() + 1)}-${pad(monday.getDate())}T08:00`;
+}
 
 describe("schedule", () => {
   it("shows unified schedule", async () => {
@@ -102,7 +111,7 @@ describe("schedule", () => {
     expect(screen.getByTestId("calendar-event-schedule-1").getAttribute("data-classes")).toContain(
       "event-past",
     );
-    expect(screen.getByTestId("calendar-event-past-2026-08-03T08:00")).toHaveAttribute(
+    expect(screen.getByTestId(currentMondayAtEightTestId())).toHaveAttribute(
       "data-display",
       "background",
     );

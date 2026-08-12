@@ -78,7 +78,9 @@
 
 **Rationale**: OpenAI 官方 Structured Outputs 文档说明 Responses API 可按 JSON Schema 约束输出，Python SDK 可直接用 Pydantic 解析；连接应用工具时使用 function calling，生成结构化用户响应时使用 `text.format`。官方文档当前建议新项目从 gpt-5.6 开始。该能力符合计划、报告和拒绝状态的严格 Schema 需求。[OpenAI Structured Outputs](https://developers.openai.com/api/docs/guides/structured-outputs)
 
-**Alternatives considered**: OpenAI Agents SDK 会复制本项目已有 Runtime／Tool／审批状态；Chat Completions 不是新计划的首选接口；多 provider 同时实现会扩大 Eval 和故障面；直接拼 HTTP 会重复官方 SDK 的解析和错误处理。
+**Evolution after desktop validation**: 桌面用户需要自行选择供应商，因此在同一 `ModelClient` 边界内增加 DeepSeek Chat Completions 和自定义 OpenAI 兼容协议。继续复用 OpenAI Python SDK 的兼容客户端，不增加独立 AI Gateway；两类协议都必须在本地执行 Pydantic 输出校验。
+
+**Alternatives considered**: OpenAI Agents SDK 会复制本项目已有 Runtime／Tool／审批状态；直接拼 HTTP 会重复 SDK 的连接、超时和错误处理；只修改验证接口会导致 DeepSeek 保存成功但实际工作流仍调用 Responses API，因此验证和运行适配必须同时切换。
 
 ## 11. Structured Outputs 与 Tool calling
 

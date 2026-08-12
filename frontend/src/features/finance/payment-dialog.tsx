@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
 
 import { api } from "@/api/client";
+import { beijingDateTimeInputToIso } from "@/lib/beijing-time";
 import type { ReceivableSummary } from "./types";
 
 export function PaymentDialog({
@@ -35,7 +36,7 @@ export function PaymentDialog({
     event.preventDefault();
     const data = new FormData(event.currentTarget);
     mutation.mutate({
-      paid_at: new Date(String(data.get("paid_at"))).toISOString(),
+      paid_at: beijingDateTimeInputToIso(String(data.get("paid_at"))),
       amount: Number(data.get("amount")),
       method: String(data.get("method")),
       payer_name: String(data.get("payer_name") || "") || null,

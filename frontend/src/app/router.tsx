@@ -4,6 +4,7 @@ import { SchedulePage } from "@/features/schedule/schedule-page";
 import { StudentsPage } from "@/features/customers/students-page";
 import { CoachesPage, CourtsPage } from "@/features/directory/directory-pages";
 import { DesktopVenueSettingsPage } from "@/features/directory/desktop-venue-settings-page";
+import { AiServiceSettingsPage } from "@/features/directory/ai-service-settings-page";
 import { AppShell } from "@/layouts/app-shell";
 import { ClassesPage } from "@/features/classes/classes-page";
 import { ClassDetailPage } from "@/features/classes/class-detail-page";
@@ -20,6 +21,7 @@ import { TodayAttendancePage } from "@/features/dashboard/today-attendance-page"
 import { CourtOverviewPage } from "@/features/dashboard/court-overview-page";
 import { OperationCaseDetailPage } from "@/features/intelligent-operations/case-detail-page";
 import { OperationsCenterPage } from "@/features/intelligent-operations/operations-center-page";
+import { OperationsSettingsPage } from "@/features/intelligent-operations/operations-settings-page";
 import { IntelligentOperationsReportPage } from "@/features/intelligent-operations/report-page";
 
 export const router = createBrowserRouter([
@@ -35,6 +37,7 @@ export const router = createBrowserRouter([
       { path: "courts/overview", element: <CourtOverviewPage /> },
       { path: "coaches", element: <CoachesPage /> },
       { path: "settings", element: <DesktopVenueSettingsPage /> },
+      { path: "settings/ai", element: <AiServiceSettingsPage /> },
       { path: "classes", element: <ClassesPage /> },
       { path: "classes/:id", element: <ClassDetailPage /> },
       { path: "private-lessons", element: <PrivateLessonsPage /> },
@@ -46,6 +49,7 @@ export const router = createBrowserRouter([
       { path: "reports", element: <IntelligentOperationsReportPage /> },
       { path: "reports/legacy", element: <OperationsReportPage /> },
       { path: "operations", element: <OperationsCenterPage /> },
+      { path: "operations/settings", element: <OperationsSettingsPage /> },
       { path: "operations/cases/:caseId", element: <OperationCaseDetailPage /> },
       { path: "audit", element: <AuditTimeline /> },
     ],

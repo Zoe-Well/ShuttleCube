@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/api/client";
 import { Panel } from "@/components/operations/page";
 import { StatusBadge } from "@/components/status/status-badge";
+import { formatBeijingDateTime } from "@/lib/beijing-time";
 import { AttachmentViewer } from "./attachment-viewer";
 import { PaymentDialog } from "./payment-dialog";
 import { RefundDialog } from "./refund-dialog";
@@ -13,9 +14,11 @@ import { VoidRecordButton } from "./void-record-button";
 export function ReceivableDetail({
   receivableId,
   onChanged,
+  collectionOnly = false,
 }: {
   receivableId: string;
   onChanged?: () => void;
+  collectionOnly?: boolean;
 }) {
   const client = useQueryClient();
   const query = useQuery({
@@ -56,13 +59,15 @@ export function ReceivableDetail({
             disabled={item.outstanding_amount <= 0}
             onRecorded={refresh}
           />
-          <RefundDialog
-            receivableId={item.receivable_id}
-            disabled={item.refundable_amount <= 0}
-            maxAmount={item.refundable_amount}
-            lessonBalance={item.lesson_balance}
-            onRecorded={refresh}
-          />
+          {!collectionOnly ? (
+            <RefundDialog
+              receivableId={item.receivable_id}
+              disabled={item.refundable_amount <= 0}
+              maxAmount={item.refundable_amount}
+              lessonBalance={item.lesson_balance}
+              onRecorded={refresh}
+            />
+          ) : null}
         </div>
       </Panel>
       <Panel title="资金流水">
@@ -73,7 +78,7 @@ export function ReceivableDetail({
                 <div>
                   <b>收款 · {paymentMethodName(payment.method)}</b>
                   <div className="mt-1 text-xs text-slate-400">
-                    {new Date(payment.paid_at).toLocaleString("zh-CN")}
+                    {formatBeijingDateTime(payment.paid_at)}
                     {payment.payer_name ? ` · 付款方：${payment.payer_name}` : ""}
                   </div>
                 </div>
@@ -81,7 +86,7 @@ export function ReceivableDetail({
               </div>
               <div className="mt-2 flex items-center justify-between">
                 <StatusBadge status={payment.status} />
-                {payment.status === "effective" ? (
+                {!collectionOnly && payment.status === "effective" ? (
                   <VoidRecordButton
                     endpoint={`/payments/${payment.id}/void`}
                     label="作废收款"
@@ -100,14 +105,14 @@ export function ReceivableDetail({
                 <div>
                   <b>退款 · {refund.reason}</b>
                   <div className="mt-1 text-xs text-slate-400">
-                    {new Date(refund.refunded_at).toLocaleString("zh-CN")}
+                    {formatBeijingDateTime(refund.refunded_at)}
                   </div>
                 </div>
                 <b className="text-red-600">-{yuan(refund.actual_amount)}</b>
               </div>
               <div className="mt-2 flex items-center justify-between">
                 <StatusBadge status={refund.status} />
-                {refund.status === "effective" ? (
+                {!collectionOnly && refund.status === "effective" ? (
                   <VoidRecordButton
                     endpoint={`/refunds/${refund.id}/void`}
                     label="作废退款"

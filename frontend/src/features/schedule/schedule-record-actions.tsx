@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 
 import { api } from "@/api/client";
+import { toBeijingDateTimeInput } from "@/lib/beijing-time";
 import { HourDateTimeField } from "./schedule-time-fields";
 import { toApiDateTime } from "./schedule-time";
 import type { ScheduleItem } from "./schedule-calendar";
@@ -11,9 +12,7 @@ import { useVenueHours } from "./use-venue-hours";
 type EditInput = { starts_at: string; ends_at: string; court_ids: string };
 
 function localDateTime(value: string) {
-  const date = new Date(value);
-  const pad = (part: number) => String(part).padStart(2, "0");
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  return toBeijingDateTimeInput(value);
 }
 
 function resource(item: ScheduleItem, type: string) {

@@ -18,7 +18,11 @@ from shuttlecube.application.operations.runtime import RunBudget, checkpoint_run
 from shuttlecube.config import get_settings
 from shuttlecube.domain.operations.models import OperationCase, OperationRun
 from shuttlecube.domain.scheduling.court import Venue
-from shuttlecube.infrastructure.ai.openai_client import OpenAIResponsesClient
+from shuttlecube.infrastructure.ai.credentials import (
+    configured_model_profile,
+    resolve_model_provider,
+)
+from shuttlecube.infrastructure.ai.openai_client import model_provider_client
 
 RECONCILIATION_EXPLANATION_WORKFLOW_KEY = "operations.reconciliation_explanation.v1"
 PROMPT_VERSION = 1
@@ -135,7 +139,8 @@ def execute_reconciliation_explanation_workflow(
         raise RuntimeError("reconciliation_context_missing")
     context = reconciliation_case_context(case)
     settings = get_settings()
-    if venue.model_enabled is not True or settings.openai_api_key is None:
+    configuration = resolve_model_provider(settings)
+    if venue.model_enabled is not True or configuration is None:
         checkpoint_run(
             run,
             {
@@ -167,13 +172,13 @@ def execute_reconciliation_explanation_workflow(
             "allowed_source_refs": sorted(_source_refs(context)),
         },
         output_schema=ReconciliationExplanation,
-        model_profile=run.model_profile or settings.operations_model_profile,
+        model_profile=configuration.model_profile,
     )
     try:
         response = VenueModelClient(
             db,
             scope,
-            OpenAIResponsesClient(settings),
+            model_provider_client(settings),
         ).generate(request)
         budget.consume_model_call(tokens=response.usage)
         output = _validate_explanation(
@@ -249,7 +254,7 @@ def enqueue_reconciliation_explanation(
         policy_version=case.policy_version,
         prompt_version=PROMPT_VERSION,
         toolset_version=1,
-        model_profile=get_settings().operations_model_profile,
+        model_profile=configured_model_profile(get_settings()),
         input_refs=[{"kind": "operation_case", "id": case.id, "version": case.version}],
         input_hash=input_hash,
         checkpoint={"workflow_step": "queued", "state": {}},

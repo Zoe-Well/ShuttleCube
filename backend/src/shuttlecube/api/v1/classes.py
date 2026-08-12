@@ -7,9 +7,9 @@ from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from shuttlecube.api.dependencies import current_session, require_csrf
+from shuttlecube.api.dependencies import RequestScope, current_session, request_scope, require_csrf
 from shuttlecube.api.errors import BusinessError
-from shuttlecube.api.serialization import as_utc
+from shuttlecube.api.serialization import as_utc, beijing_today
 from shuttlecube.application.commands.attendance import (
     AttendanceDecision,
     balance,
@@ -17,6 +17,7 @@ from shuttlecube.application.commands.attendance import (
 )
 from shuttlecube.application.commands.class_cancellation import (
     cancel_and_replace,
+    mark_not_held_no_enrollment,
     schedule_cancelled_session_replacement,
 )
 from shuttlecube.application.commands.classes import create_fixed_class, enroll_student
@@ -98,6 +99,10 @@ class CancelReplaceWrite(BaseModel):
     version: int
 
 
+class NoEnrollmentNotHeldWrite(BaseModel):
+    version: int
+
+
 class SessionRescheduleWrite(BaseModel):
     starts_at: datetime
     ends_at: datetime
@@ -155,7 +160,7 @@ def class_view(item: FixedClass) -> dict[str, object]:
 @router.get("/classes")
 def list_classes(
     db: Annotated[Session, Depends(get_db)],
-    _: Annotated[tuple[object, object], Depends(current_session)],
+    scope: Annotated[RequestScope, Depends(request_scope)],
     business_date: date | None = None,
     ending_within_days: EndingWithinDays | None = None,
 ) -> list[dict[str, object]]:
@@ -167,7 +172,10 @@ def list_classes(
                 "remaining_scheduled_sessions": item.remaining_scheduled_sessions,
             }
             for item in get_ending_classes(
-                db, business_date or date.today(), ending_within_days=ending_within_days
+                db,
+                scope,
+                business_date or beijing_today(),
+                ending_within_days=ending_within_days,
             )
         ]
     return [
@@ -479,6 +487,32 @@ def post_cancel_replace(
     return {
         "cancelled_session_id": item.id,
         "replacement_session_id": replacement.id if replacement else None,
+    }
+
+
+@router.post("/class-sessions/{session_id}/no-enrollment:mark-not-held")
+def post_no_enrollment_not_held(
+    session_id: str,
+    payload: NoEnrollmentNotHeldWrite,
+    db: Annotated[Session, Depends(get_db)],
+    request: Request,
+    user: Annotated[SystemUser, Depends(require_csrf)],
+) -> dict[str, object]:
+    item = db.get(ClassSession, session_id)
+    if item is None:
+        raise BusinessError(404, "session_not_found", "课程不存在")
+    mark_not_held_no_enrollment(
+        db,
+        item,
+        actor_id=user.id,
+        request_id=str(getattr(request.state, "request_id", "unknown")),
+        version=payload.version,
+    )
+    return {
+        "session_id": item.id,
+        "status": item.status,
+        "replacement_decision": item.replacement_decision,
+        "version": item.version,
     }
 
 

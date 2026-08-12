@@ -2,9 +2,9 @@ import sqlite3
 from contextlib import closing
 from pathlib import Path
 
-from alembic import command
 from alembic.config import Config
 
+from alembic import command
 from shuttlecube.infrastructure.desktop.paths import sqlite_url
 
 BACKEND_ROOT = Path(__file__).parents[3]

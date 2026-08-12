@@ -573,6 +573,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/class-sessions/{session_id}/no-enrollment:mark-not-held": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 将零报名学员的课程标记为未开课 */
+        post: operations["markNoEnrollmentClassSessionNotHeld"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/class-sessions/{session_id}/reschedule": {
         parameters: {
             query?: never;
@@ -1486,6 +1503,30 @@ export interface paths {
         patch: operations["updateOperationsModelSetting"];
         trace?: never;
     };
+    "/operations/settings/model/credential": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Validate and securely save the desktop OpenAI API key
+         * @description Desktop-only. The API key is write-only and is never returned, persisted in the database, or included in audit payloads.
+         */
+        put: operations["configureOperationsModelCredential"];
+        post?: never;
+        /**
+         * Remove the securely saved desktop OpenAI API key
+         * @description Desktop-only. Removing the key also disables model use for the current Venue.
+         */
+        delete: operations["deleteOperationsModelCredential"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/operations/settings/runtime": {
         parameters: {
             query?: never;
@@ -1562,7 +1603,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List operation cases in the current venue only */
+        /** List operation cases in the current venue only; defaults to non-terminal cases */
         get: operations["listOperationCases"];
         put?: never;
         post?: never;
@@ -1583,6 +1624,40 @@ export interface paths {
         get: operations["getOperationCase"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/operations/cases/{case_id}/action-context": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Return the scoped business data required to process this case in place */
+        get: operations["getOperationCaseActionContext"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/operations/cases/{case_id}:verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Immediately run the deterministic verifier after a human business action */
+        post: operations["verifyOperationCaseNow"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1823,6 +1898,42 @@ export interface paths {
         put?: never;
         /** Create a validated immutable policy draft */
         post: operations["createOperationsPolicyDraft"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/operations/policies/{policy_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** View one policy version for the current venue */
+        get: operations["getOperationsPolicy"];
+        put?: never;
+        post?: never;
+        /** Delete a draft policy version */
+        delete: operations["deleteOperationsPolicyDraft"];
+        options?: never;
+        head?: never;
+        /** Rename and edit a draft policy version */
+        patch: operations["updateOperationsPolicyDraft"];
+        trace?: never;
+    };
+    "/operations/policies/{policy_id}:copy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Copy any policy version into a new named draft */
+        post: operations["copyOperationsPolicyDraft"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2342,6 +2453,18 @@ export interface components {
             cancelled_session_id: string;
             /** Format: uuid */
             replacement_session_id?: string | null;
+        };
+        NoEnrollmentNotHeldCommand: {
+            version: number;
+        };
+        NoEnrollmentNotHeldResult: {
+            /** Format: uuid */
+            session_id: string;
+            /** @constant */
+            status: "cancelled";
+            /** @constant */
+            replacement_decision: "waived";
+            version: number;
         };
         ClassSessionRescheduleWrite: {
             /** Format: date-time */
@@ -3135,6 +3258,18 @@ export interface components {
         ModelSetting: {
             model_enabled: boolean;
             provider_configured: boolean;
+            provider_editable: boolean;
+            /** @enum {string|null} */
+            provider_source: "desktop" | "environment" | null;
+            /** Format: date-time */
+            provider_verified_at: string | null;
+            /** @enum {string} */
+            provider_key: "openai" | "deepseek" | "custom";
+            provider_label: string;
+            provider_base_url: string;
+            /** @enum {string} */
+            provider_api_mode: "responses" | "chat_completions";
+            provider_model_profile: string;
             /** Format: uuid */
             enabled_by?: string | null;
             /** Format: date-time */
@@ -3145,8 +3280,17 @@ export interface components {
         };
         ModelSettingUpdate: {
             model_enabled: boolean;
-            reason: string;
+            reason?: string;
             expected_version: number;
+        };
+        ModelCredentialUpdate: {
+            /** @enum {string} */
+            provider: "openai" | "deepseek" | "custom";
+            base_url: string;
+            /** @enum {string} */
+            api_mode: "responses" | "chat_completions";
+            model_profile: string;
+            api_key: string;
         };
         RuntimeSetting: {
             operations_enabled: boolean;
@@ -3158,7 +3302,7 @@ export interface components {
         RuntimeSettingUpdate: {
             operations_enabled: boolean;
             write_tools_enabled: boolean;
-            reason: string;
+            reason?: string;
             expected_version: number;
         };
         MembershipSummary: {
@@ -3617,13 +3761,26 @@ export interface components {
             execution_run: components["schemas"]["RunSummary"] | null;
         };
         OperationsPolicyDraftInput: {
+            name: string;
             /** @constant */
             schema_version: "1";
             config: components["schemas"]["OperationsPolicyConfig"];
         };
+        OperationsPolicyUpdateInput: {
+            name: string;
+            config: components["schemas"]["OperationsPolicyConfig"];
+            expected_version: number;
+        };
+        OperationsPolicyCopyInput: {
+            name: string;
+        };
+        OperationsPolicyActivationInput: {
+            expected_version: number;
+        };
         OperationsPolicy: {
             /** Format: uuid */
             id: string;
+            name: string;
             /** @constant */
             policy_key: "default_operations";
             policy_version: number;
@@ -3644,6 +3801,9 @@ export interface components {
             activated_at?: string | null;
             /** Format: date-time */
             created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+            version: number;
         };
         OperationsPolicyConfig: {
             receivable_followup: {
@@ -4728,6 +4888,34 @@ export interface operations {
                 };
             };
             409: components["responses"]["ScheduleConflict"];
+            422: components["responses"]["ValidationError"];
+        };
+    };
+    markNoEnrollmentClassSessionNotHeld: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NoEnrollmentNotHeldCommand"];
+            };
+        };
+        responses: {
+            /** @description 课程已取消、排期已释放，不生成考勤、课时或教练费用 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NoEnrollmentNotHeldResult"];
+                };
+            };
+            409: components["responses"]["ConcurrentChange"];
             422: components["responses"]["ValidationError"];
         };
     };
@@ -6332,6 +6520,62 @@ export interface operations {
             409: components["responses"]["Problem"];
         };
     };
+    configureOperationsModelCredential: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": components["parameters"]["CsrfToken"];
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ModelCredentialUpdate"];
+            };
+        };
+        responses: {
+            /** @description Safe provider status after successful validation and storage; model use remains independently disabled until explicitly enabled */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelSetting"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            422: components["responses"]["Problem"];
+            503: components["responses"]["Problem"];
+        };
+    };
+    deleteOperationsModelCredential: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": components["parameters"]["CsrfToken"];
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Safe provider status after removal */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelSetting"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+        };
+    };
     getOperationsRuntimeSetting: {
         parameters: {
             query?: never;
@@ -6474,6 +6718,7 @@ export interface operations {
     listOperationCases: {
         parameters: {
             query?: {
+                /** @description Repeat to select states. When omitted, resolved and dismissed cases are excluded. */
                 state?: components["schemas"]["CaseState"][];
                 case_type?: string;
                 assigned_to?: string;
@@ -6486,7 +6731,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Cursor-paged case list ordered by severity, due date and recency */
+            /** @description Cursor-paged active cases ordered by priority, or requested terminal cases ordered by completion recency */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -6524,6 +6769,69 @@ export interface operations {
             401: components["responses"]["Problem"];
             403: components["responses"]["Problem"];
             404: components["responses"]["Problem"];
+        };
+    };
+    getOperationCaseActionContext: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: components["parameters"]["CaseId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Case-type-specific action context with user-facing names and completion facts */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        kind: "attendance" | "receivable" | "fixed_class_renewal" | "private_package_renewal" | "replacement" | "reconciliation";
+                    } & {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
+        };
+    };
+    verifyOperationCaseNow: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": components["parameters"]["CsrfToken"];
+            };
+            path: {
+                case_id: components["parameters"]["CaseId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current deterministic verification outcome and resulting case state */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        state: components["schemas"]["CaseState"];
+                        outcome: string;
+                        reason_code: string;
+                    };
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
         };
     };
     analyzeOperationCase: {
@@ -7028,6 +7336,127 @@ export interface operations {
             422: components["responses"]["Problem"];
         };
     };
+    getOperationsPolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                policy_id: components["parameters"]["PolicyId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Policy version details */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperationsPolicy"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+        };
+    };
+    deleteOperationsPolicyDraft: {
+        parameters: {
+            query: {
+                expected_version: number;
+            };
+            header: {
+                "X-CSRF-Token": components["parameters"]["CsrfToken"];
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                policy_id: components["parameters"]["PolicyId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Draft deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
+        };
+    };
+    updateOperationsPolicyDraft: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": components["parameters"]["CsrfToken"];
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                policy_id: components["parameters"]["PolicyId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OperationsPolicyUpdateInput"];
+            };
+        };
+        responses: {
+            /** @description Updated draft */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperationsPolicy"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
+            422: components["responses"]["Problem"];
+        };
+    };
+    copyOperationsPolicyDraft: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": components["parameters"]["CsrfToken"];
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                policy_id: components["parameters"]["PolicyId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OperationsPolicyCopyInput"];
+            };
+        };
+        responses: {
+            /** @description Copied draft */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperationsPolicy"];
+                };
+            };
+            401: components["responses"]["Problem"];
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            422: components["responses"]["Problem"];
+        };
+    };
     activateOperationsPolicy: {
         parameters: {
             query?: never;
@@ -7042,10 +7471,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": {
-                    /** @constant */
-                    expected_state: "draft";
-                };
+                "application/json": components["schemas"]["OperationsPolicyActivationInput"];
             };
         };
         responses: {

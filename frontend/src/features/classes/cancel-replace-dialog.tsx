@@ -1,10 +1,10 @@
 import { useState } from "react";
 
 import { api } from "@/api/client";
+import { beijingDateTimeInputToIso, toBeijingDateTimeInput } from "@/lib/beijing-time";
 
 function localInput(value: string | number | Date) {
-  const date = new Date(value);
-  return new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
+  return toBeijingDateTimeInput(value);
 }
 
 type Props = {
@@ -47,8 +47,8 @@ export function CancelReplaceDialog({
         await api(`/class-sessions/${sessionId}/replacement`, {
           method: "POST",
           body: JSON.stringify({
-            starts_at: new Date(startsAt).toISOString(),
-            ends_at: new Date(endsAt).toISOString(),
+            starts_at: beijingDateTimeInputToIso(startsAt),
+            ends_at: beijingDateTimeInputToIso(endsAt),
             version,
           }),
         });
@@ -61,8 +61,8 @@ export function CancelReplaceDialog({
             version,
             ...(decision === "scheduled"
               ? {
-                  replacement_start: new Date(startsAt).toISOString(),
-                  replacement_end: new Date(endsAt).toISOString(),
+                  replacement_start: beijingDateTimeInputToIso(startsAt),
+                  replacement_end: beijingDateTimeInputToIso(endsAt),
                 }
               : {}),
           }),

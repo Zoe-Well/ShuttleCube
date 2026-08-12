@@ -76,6 +76,54 @@ describe("classes", () => {
     });
   });
 
+  it("marks a zero-enrollment session as not held instead of opening attendance", async () => {
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    vi.mocked(api).mockImplementation((path) => {
+      if (path === "/classes/class-empty") {
+        return Promise.resolve({
+          id: "class-empty",
+          name: "测试周五固定班",
+          status: "active",
+          version: 1,
+          session_count: 1,
+          capacity: 10,
+          coach_fee_per_session: 80,
+          finance: { actual_amount: 0, received_amount: 0, refunded_amount: 0, net_received: 0, outstanding_amount: 0 },
+          sessions: [{
+            id: "session-empty",
+            version: 3,
+            sequence_number: 1,
+            scheduled_start: "2026-08-07T10:00:00Z",
+            scheduled_end: "2026-08-07T11:00:00Z",
+            status: "scheduled",
+            replacement_for_session_id: null,
+            replacement_for_sequence: null,
+            replacement_decision: null,
+            attendance_finalized_at: null,
+            attendance: [],
+            coach_fee: null,
+          }],
+          enrollments: [],
+        });
+      }
+      return Promise.resolve({});
+    });
+    render(provider(
+      <MemoryRouter initialEntries={["/classes/class-empty"]}>
+        <Routes><Route path="/classes/:id" element={<ClassDetailPage />} /></Routes>
+      </MemoryRouter>,
+    ));
+
+    expect(await screen.findByRole("button", { name: "标记未开课（无学员）" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "完成考勤" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "标记未开课（无学员）" }));
+
+    await waitFor(() => expect(api).toHaveBeenCalledWith(
+      "/class-sessions/session-empty/no-enrollment:mark-not-held",
+      { method: "POST", body: JSON.stringify({ version: 3 }) },
+    ));
+  });
+
   it("shows ending classes for the selected day range", async () => {
     vi.mocked(api).mockImplementation((path) => {
       if (typeof path === "string" && path.includes("ending_within_days=15")) {

@@ -1,6 +1,7 @@
 import { MapPin } from "lucide-react";
 
 import type { ScheduleItem } from "@/features/schedule/schedule-calendar";
+import { formatBeijingTime } from "@/lib/beijing-time";
 import {
   canonicalCourtId,
   type CourtDirectoryItem,
@@ -69,7 +70,7 @@ function usageSegments(
 }
 
 function shortTime(value: string) {
-  return new Date(value).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
+  return formatBeijingTime(value);
 }
 
 export function CourtUsageOverview({

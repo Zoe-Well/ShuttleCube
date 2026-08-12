@@ -34,6 +34,14 @@
 - 新建与迁移 Venue 的 `model_enabled` 一律为 false；provider 凭据存在不得改变该值。只有具备 `operations.model.manage` 的 active 成员可修改，并写 AuditLog。
 - 时区和营业时间仍由 Venue 保存，所有业务 Query 必须按传入 venue_id 读取，不得取第一条记录。
 
+### AI provider credential（installation setting, not a database entity）
+
+- `model_enabled` 是每个 Venue 独立的 AI 服务开关；API Key 验证或保存成功不得自动修改该开关。
+- Windows 桌面版将 AI API Key 以当前 Windows 用户范围的 DPAPI 密文保存在安装数据目录；供应商、基础地址、协议、模型名称和验证时间作为非敏感元数据保存。明文不得写入数据库、日志、Trace、AuditLog 或 API 响应。
+- 服务端／浏览器部署只从部署环境读取凭据，管理页面仅显示是否已配置，不提供录入、替换或删除入口。
+- 桌面版先验证新 Key，再替换已有密文；验证失败必须保留原有可用 Key。移除桌面 Key 时，同时关闭当前 Venue 的 `model_enabled`。
+- 运行时统一通过凭据解析器读取桌面密文或部署环境，不将凭据传入业务数据模型、Agent Context 或 Tool 输入。
+
 ### OrganizationMembership
 
 **Fields**: `id`, `organization_id`, `user_id`, `status(pending_review|active|disabled)`, `organization_role(owner|admin|member)`, `reviewed_by?`, `reviewed_at?`, `created_at`, `updated_at`, `version`.
@@ -89,7 +97,7 @@
 
 **Fields**:
 
-- `id`, `organization_id`, `venue_id`;
+- `id`, `organization_id`, `venue_id`, `name`;
 - `policy_key`（MVP 固定 `default_operations`）, `policy_version`;
 - `schema_version`, `config` JSON, `config_hash`;
 - `state(draft|active|retired)`, `effective_from`, `effective_to?`;
@@ -108,7 +116,9 @@
 
 - `(venue_id, policy_key, policy_version)` 唯一。
 - config 必须通过对应 schema_version；不允许任意表达式、SQL 或代码。
-- 只能从 draft 激活；激活后不可编辑，修改产生新版本。
+- draft 可重命名、编辑或删除，并通过乐观版本号避免覆盖并发修改；active／retired 不可编辑或删除，修改时复制为新 draft。
+- 任意版本均可查看完整配置并复制为带名称的新 draft；创建、编辑、复制、删除和激活全部写 AuditLog。
+- 只能从 draft 激活；激活事务必须先将旧 active 标记为 retired 并刷新数据库，再将目标 draft 标记为 active。
 - 同一 policy_key 在同一时点只能有一个 active 版本，由应用事务和数据库查询校验共同保证。
 - 未配置规则返回 `policy_not_configured`，不创建案件。
 

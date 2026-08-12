@@ -102,8 +102,8 @@ export function Sidebar() {
       {showOperations ? (
         <div className="m-3 border-t border-white/8 pt-3">
           <NavLink className="block rounded-md bg-emerald-400/10 p-3 text-xs text-emerald-200" to="/operations">
-            <div className="flex items-center gap-2 font-medium"><Bot size={14} />智能运营已就绪</div>
-            <p className="mb-0 mt-1 text-[10px] leading-4 text-slate-400">确定性发现问题，按权限受控处理。</p>
+            <div className="flex items-center gap-2 font-medium"><Bot size={14} />智能运营</div>
+            <p className="mb-0 mt-1 text-[10px] leading-4 text-slate-400">{context.data?.operations_enabled ? "自动检查正在运行，按权限安全处理。" : "自动检查尚未开启，已有事项仍可查看。"}</p>
           </NavLink>
         </div>
       ) : null}

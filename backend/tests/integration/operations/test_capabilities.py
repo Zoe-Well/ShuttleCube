@@ -1,5 +1,6 @@
 import pytest
 
+from shuttlecube.api.dependencies import RequestScope
 from shuttlecube.application.operations.access import (
     AccessDenied,
     capabilities_for_role,
@@ -8,7 +9,6 @@ from shuttlecube.application.operations.access import (
     require_capability,
 )
 from shuttlecube.application.operations.tracing import redact_trace_payload
-from shuttlecube.api.dependencies import RequestScope
 
 
 def _scope(role_key: str) -> RequestScope:

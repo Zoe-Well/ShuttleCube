@@ -16,10 +16,12 @@ import { Drawer } from "@/components/operations/drawer";
 import { EmptyState } from "@/components/operations/empty-state";
 import { MetricCard, Panel } from "@/components/operations/page";
 import { StatusBadge } from "@/components/status/status-badge";
+import { formatBeijingDate, formatBeijingDateTime, formatBeijingTime } from "@/lib/beijing-time";
 import { ReceivableDetail } from "@/features/finance/receivable-detail";
 import { yuan } from "@/features/finance/types";
 import { CancelReplaceDialog } from "./cancel-replace-dialog";
 import { ClassManagementActions } from "./class-management-actions";
+import { NoEnrollmentSessionPanel } from "./no-enrollment-session-panel";
 import { SessionTimeEditor } from "./session-time-editor";
 import { AttendancePanel } from "./attendance-panel";
 
@@ -153,7 +155,7 @@ export function ClassDetailPage() {
           label="下次课程"
           value={
             nextSession
-              ? new Date(nextSession.scheduled_start).toLocaleDateString("zh-CN", {
+              ? formatBeijingDate(nextSession.scheduled_start, {
                   month: "numeric",
                   day: "numeric",
                 })
@@ -199,12 +201,9 @@ export function ClassDetailPage() {
                           补排原第 {item.replacement_for_sequence} 节
                         </div>
                       ) : null}
-                      <div>{new Date(item.scheduled_start).toLocaleDateString("zh-CN")}</div>
+                      <div>{formatBeijingDate(item.scheduled_start)}</div>
                       <div className="table-secondary">
-                        {new Date(item.scheduled_start).toLocaleTimeString("zh-CN", {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}
+                        {formatBeijingTime(item.scheduled_start)}
                       </div>
                     </td>
                     <td><StatusBadge status={item.status} /></td>
@@ -223,7 +222,16 @@ export function ClassDetailPage() {
                     <td>
                       {item.status === "scheduled" ? (
                         <div className="flex flex-wrap gap-3">
-                          <button className="text-xs font-semibold text-emerald-700" onClick={() => setAttendanceSession(item.id)} type="button">完成考勤</button>
+                    {activeEnrollmentCount > 0 ? (
+                      <button className="text-xs font-semibold text-emerald-700" onClick={() => setAttendanceSession(item.id)} type="button">完成考勤</button>
+                    ) : (
+                      <NoEnrollmentSessionPanel
+                        compact
+                        sessionId={item.id}
+                        version={item.version}
+                        onDone={() => void query.refetch()}
+                      />
+                    )}
                           <SessionTimeEditor session={item} onDone={() => void query.refetch()} />
                           <CancelReplaceDialog
                             sessionId={item.id}
@@ -323,7 +331,7 @@ export function ClassDetailPage() {
         title="课程考勤结果"
         description={
           attendanceResult
-            ? `第 ${attendanceResult.sequence_number} 节 · ${new Date(attendanceResult.scheduled_start).toLocaleString("zh-CN")}`
+            ? `第 ${attendanceResult.sequence_number} 节 · ${formatBeijingDateTime(attendanceResult.scheduled_start)}`
             : "查看已完成课程的学员考勤与课时处理"
         }
         onClose={() => setAttendanceResultSession(null)}

@@ -2,6 +2,8 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Bot, CalendarClock, CircleDollarSign, MessageSquareText } from "lucide-react";
 import { useMemo, useState } from "react";
 
+import { beijingDateTimeInputToIso, formatBeijingDateTime, toBeijingDateTimeInput } from "@/lib/beijing-time";
+
 import {
   analyzeOperationCase,
   type OperationCase,
@@ -9,6 +11,7 @@ import {
   useFollowupContext,
   useOperationRun,
 } from "./api";
+import { outcomeLabel, runStateLabel } from "./terminology";
 
 const supportedCases = new Set([
   "receivable_followup",
@@ -17,9 +20,7 @@ const supportedCases = new Set([
 ]);
 
 function localDateTime(offsetHours = 0) {
-  const value = new Date(Date.now() + offsetHours * 60 * 60 * 1000);
-  value.setMinutes(value.getMinutes() - value.getTimezoneOffset());
-  return value.toISOString().slice(0, 16);
+  return toBeijingDateTimeInput(new Date(Date.now() + offsetHours * 60 * 60 * 1000));
 }
 
 export function RevenueRetentionPanel({ item }: { item: OperationCase }) {
@@ -57,7 +58,7 @@ export function RevenueRetentionPanel({ item }: { item: OperationCase }) {
         outcome_code: outcome,
         summary: summary.trim(),
         happened_at: new Date().toISOString(),
-        next_check_at: requiresNextCheck ? new Date(nextCheckAt).toISOString() : undefined,
+        next_check_at: requiresNextCheck ? beijingDateTimeInputToIso(nextCheckAt) : undefined,
       });
     },
     onSuccess: () => {
@@ -100,7 +101,7 @@ export function RevenueRetentionPanel({ item }: { item: OperationCase }) {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="flex items-center gap-2 font-semibold"><CircleDollarSign size={18} />收入保障跟进</h2>
-          <p className="mt-1 text-xs text-slate-500">金额、课时和续费事实由业务程序读取；智能分析只提供解释和可编辑草稿。</p>
+          <p className="mt-1 text-xs text-slate-500">金额、课时和续费信息来自业务记录；AI 只提供解释和可编辑草稿。</p>
         </div>
         <button className="btn" disabled={analyze.isPending} onClick={() => analyze.mutate()}>
           <Bot size={15} />{analyze.isPending ? "正在创建分析…" : "生成分析与沟通草稿"}
@@ -120,14 +121,14 @@ export function RevenueRetentionPanel({ item }: { item: OperationCase }) {
         <div className="font-medium">联系人</div>
         <div className="mt-1 text-slate-600">
           {context.data.contact.available
-            ? `${context.data.contact.display_name ?? "已授权联系人"}（系统不向模型提供电话或微信号）`
+            ? `${context.data.contact.display_name ?? "已授权联系人"}（系统不会向 AI 提供电话或微信号）`
             : "暂无可用联系人；系统不会编造联系方式或生成发送建议。"}
         </div>
       </div>
 
       {analysisRun.data ? (
         <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50/50 p-4">
-          <div className="text-sm font-medium">智能分析 · {analysisRun.data.state}</div>
+          <div className="text-sm font-medium">AI 分析 · {runStateLabel(analysisRun.data.state)}</div>
           {analysis ? (
             <div className="mt-2 space-y-2 text-sm">
               <p>{analysis.summary}</p>
@@ -144,8 +145,8 @@ export function RevenueRetentionPanel({ item }: { item: OperationCase }) {
           ) : (
             <p className="mt-2 text-xs text-slate-600">
               {analysisRun.data.checkpoint?.state?.reason === "model_disabled"
-                ? "当前场馆未启用模型，确定性跟进信息仍可正常使用。"
-                : "分析正在处理，或模型暂时不可用。"}
+                ? "当前场馆未开启 AI 辅助，跟进信息仍可正常使用。"
+                : "分析正在处理，或 AI 服务暂时不可用。"}
             </p>
           )}
         </div>
@@ -158,7 +159,7 @@ export function RevenueRetentionPanel({ item }: { item: OperationCase }) {
             <option value="reached">已联系</option>
             <option value="no_answer">未接通</option>
             <option value="promised_payment">承诺付款</option>
-            <option value="renewed">表示已续费</option>
+            <option value="renewed">已续费</option>
             <option value="follow_later">稍后跟进</option>
             <option value="disputed">对账有异议</option>
             <option value="no_intent">暂无意向</option>
@@ -191,7 +192,7 @@ export function RevenueRetentionPanel({ item }: { item: OperationCase }) {
           <div className="mt-3 space-y-2">
             {context.data.activities.map((activity) => (
               <div className="rounded-lg bg-slate-50 p-3 text-sm" key={activity.id}>
-                <div className="font-medium">{activity.outcome_code} · {new Date(activity.happened_at).toLocaleString()}</div>
+                <div className="font-medium">{outcomeLabel(activity.outcome_code)} · {formatBeijingDateTime(activity.happened_at)}</div>
                 <div className="mt-1 text-slate-600">{activity.summary}</div>
               </div>
             ))}
@@ -201,4 +202,3 @@ export function RevenueRetentionPanel({ item }: { item: OperationCase }) {
     </section>
   );
 }
-

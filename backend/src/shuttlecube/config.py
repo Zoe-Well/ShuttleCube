@@ -29,6 +29,9 @@ class Settings(BaseSettings):
     s3_access_key: str = "shuttlecube"
     s3_secret_key: str = "shuttlecube-local-secret"
     openai_api_key: SecretStr | None = None
+    operations_model_provider: Literal["openai", "deepseek", "custom"] = "openai"
+    operations_model_base_url: str | None = None
+    operations_model_api_mode: Literal["responses", "chat_completions"] = "responses"
     operations_model_profile: str = "gpt-5.6"
     operations_model_timeout_seconds: float = Field(default=45.0, gt=0, le=300)
     operations_model_max_retries: int = Field(default=2, ge=0, le=5)

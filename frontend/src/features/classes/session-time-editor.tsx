@@ -1,10 +1,10 @@
 import { type FormEvent, useState } from "react";
 
 import { api } from "@/api/client";
+import { beijingDateTimeInputToIso, toBeijingDateTimeInput } from "@/lib/beijing-time";
 
 function localInput(value: string) {
-  const date = new Date(value);
-  return new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
+  return toBeijingDateTimeInput(value);
 }
 
 export function SessionTimeEditor({
@@ -31,8 +31,8 @@ export function SessionTimeEditor({
       await api(`/class-sessions/${session.id}/reschedule`, {
         method: "POST",
         body: JSON.stringify({
-          starts_at: new Date(String(data.get("starts_at"))).toISOString(),
-          ends_at: new Date(String(data.get("ends_at"))).toISOString(),
+          starts_at: beijingDateTimeInputToIso(String(data.get("starts_at"))),
+          ends_at: beijingDateTimeInputToIso(String(data.get("ends_at"))),
           reason: String(data.get("reason")),
           version: session.version,
         }),

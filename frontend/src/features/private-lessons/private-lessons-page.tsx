@@ -14,6 +14,7 @@ import { PackageForm } from "./package-form";
 import type { ScheduleItem } from "@/features/schedule/schedule-calendar";
 import { ScheduleDetails } from "@/features/schedule/schedule-details";
 import { formatCourtNames, useCourtDirectory } from "@/features/schedule/court-display";
+import { formatBeijingDate, formatBeijingTime } from "@/lib/beijing-time";
 
 type Lesson = {
   id: string;
@@ -45,7 +46,7 @@ function lessonDisplayStatus(item: Lesson) {
 
 function PackageLedger({packageId}:{packageId:string}) {
   const query=useQuery({queryKey:["private-package-ledger",packageId],queryFn:()=>api<LedgerRow[]>(`/private-packages/${packageId}/ledger`)});
-  return <div className="mt-4"><h4 className="text-xs font-semibold text-slate-700">扣课流水</h4><div className="mt-2 divide-y divide-slate-100">{query.data?.map((item)=><div className="flex justify-between py-2 text-xs" key={item.id}><span>{new Date(item.operated_at).toLocaleDateString("zh-CN")} · {item.change_type}</span><span className={item.delta<0?"text-amber-700":"text-emerald-700"}>{item.delta>0?"+":""}{item.delta} · 余额 {item.balance_after}</span></div>)}</div></div>;
+  return <div className="mt-4"><h4 className="text-xs font-semibold text-slate-700">扣课流水</h4><div className="mt-2 divide-y divide-slate-100">{query.data?.map((item)=><div className="flex justify-between py-2 text-xs" key={item.id}><span>{formatBeijingDate(item.operated_at)} · {item.change_type}</span><span className={item.delta<0?"text-amber-700":"text-emerald-700"}>{item.delta>0?"+":""}{item.delta} · 余额 {item.balance_after}</span></div>)}</div></div>;
 }
 
 export function PrivateLessonsPage() {
@@ -147,7 +148,7 @@ export function PrivateLessonsPage() {
         </div>
       </div>
       <Panel className="mb-4" title="私教课包" description="查看每个学员的购买课时、剩余课时和收费状态">
-        {(packages.data??[]).length?<table className="data-table"><thead><tr><th>学员</th><th>绑定教练</th><th>课时</th><th>收费</th><th>有效期</th><th>状态</th><th>操作</th></tr></thead><tbody>{packages.data?.map((item)=><tr key={item.id}><td className="table-primary">{item.student_name}</td><td>{item.coach_name}</td><td>{item.remaining_units} / {item.purchased_units} 节</td><td>应收 ¥{item.actual_receivable.toFixed(2)}<div className="table-secondary">欠费 ¥{(item.finance?.outstanding_amount??item.actual_receivable).toFixed(2)}</div></td><td>{item.valid_until?new Date(item.valid_until).toLocaleDateString("zh-CN"):"长期有效"}</td><td><StatusBadge status={item.finance?.payment_status??item.status}/></td><td><button className="text-xs font-semibold text-emerald-700" onClick={()=>setSelectedPackage(item)}>详情/流水</button></td></tr>)}</tbody></table>:<EmptyState title="暂无私教课包" description="销售课包后将在这里展示课时与财务状态。"/>}
+        {(packages.data??[]).length?<table className="data-table"><thead><tr><th>学员</th><th>绑定教练</th><th>课时</th><th>收费</th><th>有效期</th><th>状态</th><th>操作</th></tr></thead><tbody>{packages.data?.map((item)=><tr key={item.id}><td className="table-primary">{item.student_name}</td><td>{item.coach_name}</td><td>{item.remaining_units} / {item.purchased_units} 节</td><td>应收 ¥{item.actual_receivable.toFixed(2)}<div className="table-secondary">欠费 ¥{(item.finance?.outstanding_amount??item.actual_receivable).toFixed(2)}</div></td><td>{item.valid_until?formatBeijingDate(item.valid_until):"长期有效"}</td><td><StatusBadge status={item.finance?.payment_status??item.status}/></td><td><button className="text-xs font-semibold text-emerald-700" onClick={()=>setSelectedPackage(item)}>详情/流水</button></td></tr>)}</tbody></table>:<EmptyState title="暂无私教课包" description="销售课包后将在这里展示课时与财务状态。"/>}
       </Panel>
       <Panel>
         <div className="flex h-14 items-center justify-between border-b border-slate-200 px-4">
@@ -220,18 +221,12 @@ export function PrivateLessonsPage() {
                   </td>
                   <td>
                     <div className="table-primary">
-                      {new Date(item.starts_at).toLocaleDateString("zh-CN")}
+                      {formatBeijingDate(item.starts_at)}
                     </div>
                     <div className="table-secondary">
-                      {new Date(item.starts_at).toLocaleTimeString("zh-CN", {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}{" "}
+                      {formatBeijingTime(item.starts_at)}{" "}
                       –{" "}
-                      {new Date(item.ends_at).toLocaleTimeString("zh-CN", {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
+                      {formatBeijingTime(item.ends_at)}
                     </div>
                   </td>
                   <td className="table-primary">{item.student_name}</td>

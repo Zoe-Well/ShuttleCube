@@ -3,6 +3,11 @@ from sqlalchemy.orm import Session
 
 from shuttlecube.config import Settings, get_settings
 from shuttlecube.domain.identity.models import SystemUser
+from shuttlecube.domain.identity.organization_models import (
+    Organization,
+    OrganizationMembership,
+    VenueMembership,
+)
 from shuttlecube.domain.scheduling.court import Court, Venue
 
 
@@ -36,6 +41,17 @@ def test_first_run_setup_creates_admin_venue_and_courts(client: TestClient, db: 
     assert response.status_code == 201
     assert response.json()["username"] == "owner"
     assert db.query(SystemUser).count() == 1
+    organization = db.query(Organization).one()
+    venue = db.query(Venue).one()
+    assert venue.organization_id == organization.id
+    organization_membership = db.query(OrganizationMembership).one()
+    assert organization_membership.user_id == db.query(SystemUser).one().id
+    assert organization_membership.organization_role == "owner"
+    assert organization_membership.status == "active"
+    venue_membership = db.query(VenueMembership).one()
+    assert venue_membership.venue_id == venue.id
+    assert venue_membership.role_key == "owner"
+    assert venue_membership.status == "active"
     assert db.query(Venue).one().name == "测试球馆"
     assert [court.code for court in db.query(Court).order_by(Court.code)] == ["1", "2", "3"]
     assert client.get("/api/v1/session").status_code == 200

@@ -14,6 +14,7 @@ import { ScheduleDetails } from "./schedule-details";
 import { canBulkDeleteSchedule } from "./schedule-bulk";
 import type { ScheduleCreationAction } from "./schedule-selection-actions";
 import { useVenueHours } from "./use-venue-hours";
+import { beijingDateKey } from "@/lib/beijing-time";
 
 const filters = [
   { value: "all", label: "全部业务" },
@@ -43,11 +44,10 @@ export function SchedulePage() {
   const [batchMessage, setBatchMessage] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const [sourceType, setSourceType] = useState("all");
-  const [weekStart, setWeekStart] = useState(() => dateValue(new Date()));
+  const [weekStart, setWeekStart] = useState(() => beijingDateKey());
   const range = useMemo(() => {
-    const start = new Date(`${weekStart}T00:00:00`);
-    const end = new Date(start);
-    end.setDate(end.getDate() + 7);
+    const start = new Date(`${weekStart}T00:00:00+08:00`);
+    const end = new Date(start.getTime() + 7 * 24 * 60 * 60 * 1000);
     return { start, end };
   }, [weekStart]);
   const query = useQuery({

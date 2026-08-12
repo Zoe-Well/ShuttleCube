@@ -909,6 +909,36 @@ paths:
           $ref: "#/components/responses/ScheduleConflict"
         "422":
           $ref: "#/components/responses/ValidationError"
+  /class-sessions/{session_id}/no-enrollment:mark-not-held:
+    post:
+      tags:
+        - Classes
+      summary: 将零报名学员的课程标记为未开课
+      operationId: markNoEnrollmentClassSessionNotHeld
+      parameters:
+        - name: session_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NoEnrollmentNotHeldCommand"
+      responses:
+        "200":
+          description: 课程已取消、排期已释放，不生成考勤、课时或教练费用
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NoEnrollmentNotHeldResult"
+        "409":
+          $ref: "#/components/responses/ConcurrentChange"
+        "422":
+          $ref: "#/components/responses/ValidationError"
   /class-sessions/{session_id}/reschedule:
     post:
       tags:
@@ -2355,6 +2385,60 @@ paths:
           $ref: "#/components/responses/Problem"
         "409":
           $ref: "#/components/responses/Problem"
+  /operations/settings/model/credential:
+    put:
+      tags:
+        - Operations Context
+      operationId: configureOperationsModelCredential
+      summary: Validate and securely save the desktop OpenAI API key
+      description: Desktop-only. The API key is write-only and is never returned,
+        persisted in the database, or included in audit payloads.
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ModelCredentialUpdate"
+      responses:
+        "200":
+          description: Safe provider status after successful validation and storage; model
+            use remains independently disabled until explicitly enabled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ModelSetting"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "422":
+          $ref: "#/components/responses/Problem"
+        "503":
+          $ref: "#/components/responses/Problem"
+    delete:
+      tags:
+        - Operations Context
+      operationId: deleteOperationsModelCredential
+      summary: Remove the securely saved desktop OpenAI API key
+      description: Desktop-only. Removing the key also disables model use for the
+        current Venue.
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      responses:
+        "200":
+          description: Safe provider status after removal
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ModelSetting"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
   /operations/settings/runtime:
     get:
       tags:
@@ -2486,10 +2570,13 @@ paths:
       tags:
         - Operations Cases
       operationId: listOperationCases
-      summary: List operation cases in the current venue only
+      summary: List operation cases in the current venue only; defaults to
+        non-terminal cases
       parameters:
         - name: state
           in: query
+          description: Repeat to select states. When omitted, resolved and dismissed cases
+            are excluded.
           schema:
             type: array
             items:
@@ -2519,7 +2606,8 @@ paths:
             default: 30
       responses:
         "200":
-          description: Cursor-paged case list ordered by severity, due date and recency
+          description: Cursor-paged active cases ordered by priority, or requested
+            terminal cases ordered by completion recency
           content:
             application/json:
               schema:
@@ -2557,6 +2645,78 @@ paths:
         "403":
           $ref: "#/components/responses/Problem"
         "404":
+          $ref: "#/components/responses/Problem"
+  /operations/cases/{case_id}/action-context:
+    get:
+      tags:
+        - Operations Cases
+      operationId: getOperationCaseActionContext
+      summary: Return the scoped business data required to process this case in place
+      parameters:
+        - $ref: "#/components/parameters/CaseId"
+      responses:
+        "200":
+          description: Case-type-specific action context with user-facing names and
+            completion facts
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - kind
+                properties:
+                  kind:
+                    type: string
+                    enum:
+                      - attendance
+                      - receivable
+                      - fixed_class_renewal
+                      - private_package_renewal
+                      - replacement
+                      - reconciliation
+                additionalProperties: true
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+        "409":
+          $ref: "#/components/responses/Problem"
+  /operations/cases/{case_id}:verify:
+    post:
+      tags:
+        - Operations Cases
+      operationId: verifyOperationCaseNow
+      summary: Immediately run the deterministic verifier after a human business action
+      parameters:
+        - $ref: "#/components/parameters/CaseId"
+        - $ref: "#/components/parameters/CsrfToken"
+      responses:
+        "200":
+          description: Current deterministic verification outcome and resulting case state
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - state
+                  - outcome
+                  - reason_code
+                properties:
+                  state:
+                    $ref: "#/components/schemas/CaseState"
+                  outcome:
+                    type: string
+                  reason_code:
+                    type: string
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+        "409":
           $ref: "#/components/responses/Problem"
   /operations/cases/{case_id}:analyze:
     post:
@@ -3095,6 +3255,116 @@ paths:
           $ref: "#/components/responses/Problem"
         "422":
           $ref: "#/components/responses/Problem"
+  /operations/policies/{policy_id}:
+    get:
+      tags:
+        - Operations Policies
+      operationId: getOperationsPolicy
+      summary: View one policy version for the current venue
+      parameters:
+        - $ref: "#/components/parameters/PolicyId"
+      responses:
+        "200":
+          description: Policy version details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OperationsPolicy"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+    patch:
+      tags:
+        - Operations Policies
+      operationId: updateOperationsPolicyDraft
+      summary: Rename and edit a draft policy version
+      parameters:
+        - $ref: "#/components/parameters/PolicyId"
+        - $ref: "#/components/parameters/CsrfToken"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OperationsPolicyUpdateInput"
+      responses:
+        "200":
+          description: Updated draft
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OperationsPolicy"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+        "409":
+          $ref: "#/components/responses/Problem"
+        "422":
+          $ref: "#/components/responses/Problem"
+    delete:
+      tags:
+        - Operations Policies
+      operationId: deleteOperationsPolicyDraft
+      summary: Delete a draft policy version
+      parameters:
+        - $ref: "#/components/parameters/PolicyId"
+        - name: expected_version
+          in: query
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+        - $ref: "#/components/parameters/CsrfToken"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      responses:
+        "204":
+          description: Draft deleted
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+        "409":
+          $ref: "#/components/responses/Problem"
+  /operations/policies/{policy_id}:copy:
+    post:
+      tags:
+        - Operations Policies
+      operationId: copyOperationsPolicyDraft
+      summary: Copy any policy version into a new named draft
+      parameters:
+        - $ref: "#/components/parameters/PolicyId"
+        - $ref: "#/components/parameters/CsrfToken"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OperationsPolicyCopyInput"
+      responses:
+        "201":
+          description: Copied draft
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OperationsPolicy"
+        "401":
+          $ref: "#/components/responses/Problem"
+        "403":
+          $ref: "#/components/responses/Problem"
+        "404":
+          $ref: "#/components/responses/Problem"
+        "422":
+          $ref: "#/components/responses/Problem"
   /operations/policies/{policy_id}:activate:
     post:
       tags:
@@ -3110,14 +3380,7 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              additionalProperties: false
-              required:
-                - expected_state
-              properties:
-                expected_state:
-                  type: string
-                  const: draft
+              $ref: "#/components/schemas/OperationsPolicyActivationInput"
       responses:
         "200":
           description: Active policy
@@ -4654,6 +4917,34 @@ components:
             - string
             - "null"
           format: uuid
+    NoEnrollmentNotHeldCommand:
+      type: object
+      required:
+        - version
+      properties:
+        version:
+          type: integer
+          minimum: 1
+    NoEnrollmentNotHeldResult:
+      type: object
+      required:
+        - session_id
+        - status
+        - replacement_decision
+        - version
+      properties:
+        session_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          const: cancelled
+        replacement_decision:
+          type: string
+          const: waived
+        version:
+          type: integer
+          minimum: 1
     ClassSessionRescheduleWrite:
       type: object
       required:
@@ -6803,6 +7094,14 @@ components:
       required:
         - model_enabled
         - provider_configured
+        - provider_editable
+        - provider_source
+        - provider_verified_at
+        - provider_key
+        - provider_label
+        - provider_base_url
+        - provider_api_mode
+        - provider_model_profile
         - updated_at
         - version
       properties:
@@ -6810,6 +7109,38 @@ components:
           type: boolean
         provider_configured:
           type: boolean
+        provider_editable:
+          type: boolean
+        provider_source:
+          type:
+            - string
+            - "null"
+          enum:
+            - desktop
+            - environment
+            - null
+        provider_verified_at:
+          type:
+            - string
+            - "null"
+          format: date-time
+        provider_key:
+          type: string
+          enum:
+            - openai
+            - deepseek
+            - custom
+        provider_label:
+          type: string
+        provider_base_url:
+          type: string
+        provider_api_mode:
+          type: string
+          enum:
+            - responses
+            - chat_completions
+        provider_model_profile:
+          type: string
         enabled_by:
           type:
             - string
@@ -6831,7 +7162,6 @@ components:
       additionalProperties: false
       required:
         - model_enabled
-        - reason
         - expected_version
       properties:
         model_enabled:
@@ -6843,6 +7173,40 @@ components:
         expected_version:
           type: integer
           minimum: 1
+    ModelCredentialUpdate:
+      type: object
+      additionalProperties: false
+      required:
+        - provider
+        - base_url
+        - api_mode
+        - model_profile
+        - api_key
+      properties:
+        provider:
+          type: string
+          enum:
+            - openai
+            - deepseek
+            - custom
+        base_url:
+          type: string
+          minLength: 8
+          maxLength: 500
+        api_mode:
+          type: string
+          enum:
+            - responses
+            - chat_completions
+        model_profile:
+          type: string
+          minLength: 1
+          maxLength: 120
+        api_key:
+          type: string
+          minLength: 8
+          maxLength: 500
+          writeOnly: true
     RuntimeSetting:
       type: object
       additionalProperties: false
@@ -6868,7 +7232,6 @@ components:
       required:
         - operations_enabled
         - write_tools_enabled
-        - reason
         - expected_version
       properties:
         operations_enabled:
@@ -8239,19 +8602,61 @@ components:
       type: object
       additionalProperties: false
       required:
+        - name
         - schema_version
         - config
       properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 80
         schema_version:
           type: string
           const: "1"
         config:
           $ref: "#/components/schemas/OperationsPolicyConfig"
+    OperationsPolicyUpdateInput:
+      type: object
+      additionalProperties: false
+      required:
+        - name
+        - config
+        - expected_version
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 80
+        config:
+          $ref: "#/components/schemas/OperationsPolicyConfig"
+        expected_version:
+          type: integer
+          minimum: 1
+    OperationsPolicyCopyInput:
+      type: object
+      additionalProperties: false
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 80
+    OperationsPolicyActivationInput:
+      type: object
+      additionalProperties: false
+      required:
+        - expected_version
+      properties:
+        expected_version:
+          type: integer
+          minimum: 1
     OperationsPolicy:
       type: object
       additionalProperties: false
       required:
         - id
+        - name
         - policy_key
         - policy_version
         - schema_version
@@ -8261,10 +8666,14 @@ components:
         - effective_from
         - created_by
         - created_at
+        - updated_at
+        - version
       properties:
         id:
           type: string
           format: uuid
+        name:
+          type: string
         policy_key:
           type: string
           const: default_operations
@@ -8307,6 +8716,12 @@ components:
         created_at:
           type: string
           format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        version:
+          type: integer
+          minimum: 1
     OperationsPolicyConfig:
       type: object
       additionalProperties: false

@@ -24,7 +24,11 @@ from shuttlecube.application.operations.runtime import RunBudget, checkpoint_run
 from shuttlecube.config import get_settings
 from shuttlecube.domain.operations.models import OperationCase, OperationRun
 from shuttlecube.domain.scheduling.court import Venue
-from shuttlecube.infrastructure.ai.openai_client import OpenAIResponsesClient
+from shuttlecube.infrastructure.ai.credentials import (
+    configured_model_profile,
+    resolve_model_provider,
+)
+from shuttlecube.infrastructure.ai.openai_client import model_provider_client
 
 REVENUE_ANALYSIS_WORKFLOW_KEY = "operations.revenue_analysis.v1"
 PROMPT_VERSION = 1
@@ -144,7 +148,7 @@ def run_revenue_analysis(
             "allowed_source_refs": sorted(_allowed_source_refs(case)),
         },
         output_schema=RevenueAnalysisOutput,
-        model_profile=run.model_profile or get_settings().operations_model_profile,
+        model_profile=configured_model_profile(get_settings()),
     )
     response = model_client.generate(request)
     budget.consume_model_call(tokens=response.usage)
@@ -191,7 +195,8 @@ def execute_revenue_analysis_workflow(
     if venue is None:
         raise RuntimeError("venue_not_found")
     settings = get_settings()
-    if venue.model_enabled is not True or settings.openai_api_key is None:
+    configuration = resolve_model_provider(settings)
+    if venue.model_enabled is not True or configuration is None:
         checkpoint_run(
             run,
             {
@@ -207,7 +212,7 @@ def execute_revenue_analysis_workflow(
         )
         return
     try:
-        provider = OpenAIResponsesClient(settings)
+        provider = model_provider_client(settings)
         run_revenue_analysis(
             db,
             run=run,
@@ -267,7 +272,7 @@ def enqueue_revenue_analysis(
         policy_version=policy_version,
         prompt_version=PROMPT_VERSION,
         toolset_version=1,
-        model_profile=get_settings().operations_model_profile,
+        model_profile=configured_model_profile(get_settings()),
         input_refs=[{"kind": "operation_case", "id": case.id, "version": case.version}],
         input_hash=input_hash,
         checkpoint={"workflow_step": "queued", "state": {}},

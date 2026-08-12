@@ -8,6 +8,7 @@ from shuttlecube.api.errors import BusinessError
 from shuttlecube.application.audit.writer import record_audit
 from shuttlecube.application.commands.schedule import create_schedule
 from shuttlecube.domain.classes.class_models import ClassSession, FixedClass
+from shuttlecube.domain.classes.enrollment_models import Enrollment
 from shuttlecube.domain.scheduling.conflicts import Resource
 from shuttlecube.domain.scheduling.models import ScheduleAllocation, ScheduleEntry
 
@@ -149,6 +150,46 @@ def cancel_and_replace(
     )
     db.commit()
     return replacement
+
+
+def mark_not_held_no_enrollment(
+    db: Session,
+    session: ClassSession,
+    *,
+    actor_id: str,
+    request_id: str,
+    version: int,
+) -> None:
+    active_enrollment_count = int(
+        db.scalar(
+            select(func.count())
+            .select_from(Enrollment)
+            .where(
+                Enrollment.organization_id == session.organization_id,
+                Enrollment.venue_id == session.venue_id,
+                Enrollment.fixed_class_id == session.fixed_class_id,
+                Enrollment.status == "active",
+            )
+        )
+        or 0
+    )
+    if active_enrollment_count:
+        raise BusinessError(
+            409,
+            "session_has_active_enrollments",
+            "该固定班已有报名学员，请刷新后完成正常考勤",
+        )
+    cancel_and_replace(
+        db,
+        session,
+        reason="本节无报名学员，未实际开课",
+        replacement_decision="waived",
+        replacement_start=None,
+        replacement_end=None,
+        actor_id=actor_id,
+        request_id=request_id,
+        version=version,
+    )
 
 
 def schedule_cancelled_session_replacement(

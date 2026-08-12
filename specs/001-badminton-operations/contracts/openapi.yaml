@@ -721,6 +721,29 @@ paths:
               schema: { $ref: '#/components/schemas/CancelAndReplaceResult' }
         '409': { $ref: '#/components/responses/ScheduleConflict' }
         '422': { $ref: '#/components/responses/ValidationError' }
+  /class-sessions/{session_id}/no-enrollment:mark-not-held:
+    post:
+      tags: [Classes]
+      summary: 将零报名学员的课程标记为未开课
+      operationId: markNoEnrollmentClassSessionNotHeld
+      parameters:
+        - name: session_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/NoEnrollmentNotHeldCommand' }
+      responses:
+        '200':
+          description: 课程已取消、排期已释放，不生成考勤、课时或教练费用
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/NoEnrollmentNotHeldResult' }
+        '409': { $ref: '#/components/responses/ConcurrentChange' }
+        '422': { $ref: '#/components/responses/ValidationError' }
   /class-sessions/{session_id}/reschedule:
     post:
       tags: [Classes]
@@ -2665,6 +2688,19 @@ components:
       properties:
         cancelled_session_id: { type: string, format: uuid }
         replacement_session_id: { type: [string, 'null'], format: uuid }
+    NoEnrollmentNotHeldCommand:
+      type: object
+      required: [version]
+      properties:
+        version: { type: integer, minimum: 1 }
+    NoEnrollmentNotHeldResult:
+      type: object
+      required: [session_id, status, replacement_decision, version]
+      properties:
+        session_id: { type: string, format: uuid }
+        status: { type: string, const: cancelled }
+        replacement_decision: { type: string, const: waived }
+        version: { type: integer, minimum: 1 }
     ClassSessionRescheduleWrite:
       type: object
       required: [starts_at, ends_at, reason, version]

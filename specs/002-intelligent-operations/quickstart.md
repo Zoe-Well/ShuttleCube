@@ -47,6 +47,20 @@ pnpm --dir frontend dev
 - 新建／迁移 Venue 的 `model_enabled=false`；即使 provider 凭据已配置也不自动开启；
 - 模型未配置不影响登录、现有页面、Scope 和确定性 API。
 
+### 2.1 配置 AI 服务
+
+Windows 桌面版在“场馆设置 → 资源目录 → AI 服务配置”中选择供应商、模型并输入 API Key。OpenAI 默认使用 `https://api.openai.com/v1`、Responses API；DeepSeek 默认使用 `https://api.deepseek.com`、Chat Completions API 和 `deepseek-chat`；自定义 OpenAI 兼容服务可填写基础地址并选择协议。非 OpenAI 服务保存前会提示业务信息将发送给对应第三方。验证成功后页面显示绿色状态、验证时间和模型配置；此时仅代表 Key 可用，AI 服务仍需在运营设置中另行开启。验证失败不会覆盖已经保存的 Key，移除配置会同时关闭当前场馆的 AI 服务。
+
+AI 是嵌入业务场景的辅助能力，不提供单独聊天入口：经营报告中生成经营总结与建议，欠费／续费案件中生成分析与沟通草稿，数据核对案件中提供解释。报告 AI 生成期间页面显示处理状态并自动刷新结果，无需手动刷新。
+
+服务端／浏览器部署不允许在页面中编辑 Key。部署人员通过 `OPENAI_API_KEY` 环境变量配置，页面只显示配置状态；环境变量存在同样不会自动开启任何 Venue 的 AI 服务。
+
+任何部署方式都不得在响应、数据库、日志、Trace 或 AuditLog 中记录 API Key。可通过以下聚焦测试验证桌面加密存储、独立开关和脱敏边界：
+
+```powershell
+uv run --project backend pytest backend/tests/unit/operations/test_model_credentials.py backend/tests/integration/operations/test_model_credential_settings.py
+```
+
 ## 3. Gate A：Scope 迁移与权限复核
 
 ### 3.1 迁移验证
@@ -101,6 +115,9 @@ uv run --project backend pytest backend/tests/integration/operations/test_capabi
 期望：
 
 - config 严格拒绝未知字段、表达式、SQL、代码和越界值；
+- 每个版本有用户可识别的名称，可查看完整规则和创建／激活时间；
+- draft 可编辑、重命名和删除；active／retired 只读，可复制为新 draft 后修改；
+- 创建、编辑、复制、删除和激活均产生 scoped AuditLog；
 - 激活后内容不可编辑，变更创建新 `policy_version`；
 - 同一 Venue／policy key 同时只有一个 active 版本；
 - Case、Run、ToolCall、Approval 和 Snapshot 冻结实际使用的版本；
@@ -111,6 +128,7 @@ uv run --project backend pytest backend/tests/integration/operations/test_capabi
 ```powershell
 uv run --project backend pytest backend/tests/unit/operations/test_policies.py
 uv run --project backend pytest backend/tests/integration/operations/test_policy_activation.py
+uv run --project backend pytest backend/tests/integration/operations/test_policy_version_management.py
 ```
 
 ## 5. Gate C：模型关闭时的确定性运营中心
@@ -131,11 +149,13 @@ uv run --project backend pytest backend/tests/integration/operations/test_policy
 1. 启动 catch-up 创建遗漏扫描 Run，15 分钟 scheduled scan 和 manual scan 使用同一 Detector；
 2. 同一 `venue + detector + subject` 只存在一个活动 Case；重复扫描只更新 occurrence 证据；
 3. resolved／dismissed 问题再次出现时 `occurrence_no + 1`，旧历史保留；
-4. Case 列表、证据、业务链接、严重度和截止时间在无模型时完整可用；
-5. 新 Case 进入 case_type registry 决定的 queue_key／required_capability，符合权限人员可认领，负责人可分配／改派；失效 assignee 审计后回到队列且 SLA 不停止；
-6. 人工通过现有业务页面解决问题后，确定性 Verifier 自动关闭 Case；
-7. 模型状态显示 unavailable，不得阻止扫描，也不得把 Case 当作失败；
-8. 每个 Run 有持久化 checkpoint、预算、lease、trace_id 和停止原因。
+4. 默认“待处理”列表不包含 resolved／dismissed；“已完成”入口可按已解决／已关闭筛选，历史详情只读且不展示内部记录 ID；
+5. 活动案件通过“下一步处理”在当前页侧边窗口完成对应操作：逾期考勤直接带入课次和学员，欠费只开放当前应收的登记收款，续期带入当前班级／学员／教练，补排和核对不离开案件页；保存后立即执行确定性核对；
+6. Case 列表、证据、业务链接、严重度和截止时间在无模型时完整可用；
+7. 新 Case 进入 case_type registry 决定的 queue_key／required_capability，符合权限人员可认领，负责人可分配／改派；失效 assignee 审计后回到队列且 SLA 不停止；
+8. 人工通过案件侧边窗口或现有业务页面解决问题后，确定性 Verifier 自动关闭 Case；
+9. 模型状态显示 unavailable，不得阻止扫描，也不得把 Case 当作失败；
+10. 每个 Run 有持久化 checkpoint、预算、lease、trace_id 和停止原因。
 
 ```powershell
 uv run --project backend pytest backend/tests/unit/operations/test_detectors.py

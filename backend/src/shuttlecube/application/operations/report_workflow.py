@@ -28,7 +28,11 @@ from shuttlecube.application.operations.runtime import RunBudget, checkpoint_run
 from shuttlecube.config import get_settings
 from shuttlecube.domain.operations.models import OperationRun, OperationsReportSnapshot
 from shuttlecube.domain.scheduling.court import Venue
-from shuttlecube.infrastructure.ai.openai_client import OpenAIResponsesClient
+from shuttlecube.infrastructure.ai.credentials import (
+    configured_model_profile,
+    resolve_model_provider,
+)
+from shuttlecube.infrastructure.ai.openai_client import model_provider_client
 
 REPORT_WORKFLOW_KEY = "operations.report.v1"
 REPORT_NARRATIVE_WORKFLOW_KEY = "operations.report_narrative.v1"
@@ -221,7 +225,7 @@ def enqueue_narrative_run(
         policy_version=parent_run.policy_version,
         prompt_version=PROMPT_VERSION,
         toolset_version=1,
-        model_profile=get_settings().operations_model_profile,
+        model_profile=configured_model_profile(get_settings()),
         input_refs=[
             {
                 "kind": "operations_report_snapshot",
@@ -405,7 +409,8 @@ def execute_report_narrative_workflow(
     if snapshot is None or venue is None:
         raise RuntimeError("snapshot_not_found")
     settings = get_settings()
-    if venue.model_enabled is not True or settings.openai_api_key is None:
+    configuration = resolve_model_provider(settings)
+    if venue.model_enabled is not True or configuration is None:
         snapshot.narrative_state = "unavailable"
         checkpoint_run(
             run,
@@ -420,8 +425,8 @@ def execute_report_narrative_workflow(
     try:
         result, usage, provider = generate_report_narrative(
             snapshot,
-            model_client=VenueModelClient(db, scope, OpenAIResponsesClient(settings)),
-            model_profile=run.model_profile or settings.operations_model_profile,
+            model_client=VenueModelClient(db, scope, model_provider_client(settings)),
+            model_profile=configuration.model_profile,
         )
         budget.consume_model_call(tokens=usage)
         snapshot.summary = str(result["summary"])

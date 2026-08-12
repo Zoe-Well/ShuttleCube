@@ -18,6 +18,14 @@ export type OperationsContext = {
 export type OperationsModelSetting = {
   model_enabled: boolean;
   provider_configured: boolean;
+  provider_editable: boolean;
+  provider_source: "desktop" | "environment" | null;
+  provider_verified_at: string | null;
+  provider_key: "openai" | "deepseek" | "custom";
+  provider_label: string;
+  provider_base_url: string;
+  provider_api_mode: "responses" | "chat_completions";
+  provider_model_profile: string;
   enabled_by: string | null;
   enabled_at: string | null;
   updated_at: string;
@@ -68,6 +76,7 @@ export type OperationsPolicyConfig = {
 
 export type OperationsPolicy = {
   id: string;
+  name: string;
   policy_key: "default_operations";
   policy_version: number;
   schema_version: "1";
@@ -80,6 +89,8 @@ export type OperationsPolicy = {
   activated_by: string | null;
   activated_at: string | null;
   created_at: string;
+  updated_at: string;
+  version: number;
 };
 
 export type OperationCase = {
@@ -109,11 +120,57 @@ export type OperationCase = {
   dismissed_reason: string | null;
   policy_version?: number;
   version: number;
+  activities?: FollowupActivity[];
+  latest_runs?: OperationRun[];
+  business_links?: Array<{ label: string; route: string }>;
 };
 
 export type OperationCasePage = {
   items: OperationCase[];
   next_cursor: string | null;
+};
+
+export type CaseActionContext =
+  | {
+      kind: "attendance";
+      session: {
+        id: string;
+        fixed_class_id: string;
+        fixed_class_name: string;
+        sequence_number: number;
+        scheduled_start: string;
+        scheduled_end: string;
+        status: string;
+        attendance_finalized_at: string | null;
+        version: number;
+      };
+      enrollments: Array<{ id: string; student_id: string; student_name: string }>;
+    }
+  | ({ kind: "receivable"; receivable_id: string } & FollowupContext)
+  | ({
+      kind: "fixed_class_renewal";
+      fixed_class: { id: string; name: string; version: number; session_count: number };
+      enrollments: Array<{ id: string; student_name: string; unit_price: string; status: string }>;
+    } & FollowupContext)
+  | ({
+      kind: "private_package_renewal";
+      package: {
+        id: string;
+        student_id: string;
+        student_name: string;
+        coach_id: string;
+        coach_name: string;
+        unit_price: string;
+        valid_until: string | null;
+      };
+    } & FollowupContext)
+  | { kind: "replacement"; facts: Record<string, unknown> }
+  | ({ kind: "reconciliation" } & ReconciliationContext);
+
+export type CaseVerificationResult = {
+  state: string;
+  outcome: string;
+  reason_code: string;
 };
 
 export type OperationsBrief = {
@@ -397,10 +454,10 @@ export function useOperationsContext() {
   return useQuery({ queryKey: ["operations-context"], queryFn: getOperationsContext });
 }
 
-export function useOperationCases(filters: { queue?: string; state?: string } = {}) {
+export function useOperationCases(filters: { queue?: string; states?: string[] } = {}) {
   const parameters = new URLSearchParams();
   if (filters.queue) parameters.set("queue_key", filters.queue);
-  if (filters.state) parameters.append("state", filters.state);
+  filters.states?.forEach((state) => parameters.append("state", state));
   const query = parameters.toString();
   return useQuery({
     queryKey: ["operations-cases", filters],
@@ -414,6 +471,20 @@ export function useOperationCase(caseId?: string) {
     queryKey: ["operation-case", caseId],
     queryFn: () => api<OperationCase>(`${operationsApiPath}/cases/${caseId}`),
     enabled: Boolean(caseId),
+  });
+}
+
+export function useCaseActionContext(caseId?: string, enabled = true) {
+  return useQuery({
+    queryKey: ["operation-case-action-context", caseId],
+    queryFn: () => api<CaseActionContext>(`${operationsApiPath}/cases/${caseId}/action-context`),
+    enabled: Boolean(caseId) && enabled,
+  });
+}
+
+export function verifyOperationCaseNow(caseId: string): Promise<CaseVerificationResult> {
+  return api<CaseVerificationResult>(`${operationsApiPath}/cases/${caseId}:verify`, {
+    method: "POST",
   });
 }
 
@@ -587,6 +658,8 @@ export function useOperationsReport(reportId?: string | null) {
     queryFn: () =>
       api<OperationsReportSnapshot>(`${operationsApiPath}/reports/${reportId}`),
     enabled: Boolean(reportId),
+    refetchInterval: (query) =>
+      query.state.data?.narrative.state === "queued" ? 1500 : false,
   });
 }
 
@@ -665,7 +738,7 @@ export function getOperationsRuntimeSetting(): Promise<OperationsRuntimeSetting>
 export function updateOperationsRuntimeSetting(input: {
   operations_enabled: boolean;
   write_tools_enabled: boolean;
-  reason: string;
+  reason?: string;
   expected_version: number;
 }): Promise<OperationsRuntimeSetting> {
   return api<OperationsRuntimeSetting>(`${operationsApiPath}/settings/runtime`, {
@@ -677,13 +750,36 @@ export function updateOperationsRuntimeSetting(input: {
 
 export function updateOperationsModelSetting(input: {
   model_enabled: boolean;
-  reason: string;
+  reason?: string;
   expected_version: number;
 }): Promise<OperationsModelSetting> {
   return api<OperationsModelSetting>(`${operationsApiPath}/settings/model`, {
     method: "PATCH",
     headers: { "Idempotency-Key": crypto.randomUUID() },
     body: JSON.stringify(input),
+  });
+}
+
+export function configureOperationsModelCredential(
+  input: {
+    provider: "openai" | "deepseek" | "custom";
+    base_url: string;
+    api_mode: "responses" | "chat_completions";
+    model_profile: string;
+    api_key: string;
+  },
+): Promise<OperationsModelSetting> {
+  return api<OperationsModelSetting>(`${operationsApiPath}/settings/model/credential`, {
+    method: "PUT",
+    headers: { "Idempotency-Key": crypto.randomUUID() },
+    body: JSON.stringify(input),
+  });
+}
+
+export function deleteOperationsModelCredential(): Promise<OperationsModelSetting> {
+  return api<OperationsModelSetting>(`${operationsApiPath}/settings/model/credential`, {
+    method: "DELETE",
+    headers: { "Idempotency-Key": crypto.randomUUID() },
   });
 }
 
@@ -712,19 +808,52 @@ export function listOperationsPolicies(): Promise<OperationsPolicy[]> {
 }
 
 export function createOperationsPolicyDraft(
-  config: OperationsPolicyConfig,
+  input: { name: string; config: OperationsPolicyConfig },
 ): Promise<OperationsPolicy> {
   return api<OperationsPolicy>(`${operationsApiPath}/policies`, {
     method: "POST",
     headers: { "Idempotency-Key": crypto.randomUUID() },
-    body: JSON.stringify({ schema_version: "1", config }),
+    body: JSON.stringify({ name: input.name, schema_version: "1", config: input.config }),
   });
 }
 
-export function activateOperationsPolicy(policyId: string): Promise<OperationsPolicy> {
-  return api<OperationsPolicy>(`${operationsApiPath}/policies/${policyId}:activate`, {
+export function getOperationsPolicy(policyId: string): Promise<OperationsPolicy> {
+  return api<OperationsPolicy>(`${operationsApiPath}/policies/${policyId}`);
+}
+
+export function updateOperationsPolicyDraft(
+  policy: OperationsPolicy,
+  input: { name: string; config: OperationsPolicyConfig },
+): Promise<OperationsPolicy> {
+  return api<OperationsPolicy>(`${operationsApiPath}/policies/${policy.id}`, {
+    method: "PATCH",
+    headers: { "Idempotency-Key": crypto.randomUUID() },
+    body: JSON.stringify({ ...input, expected_version: policy.version }),
+  });
+}
+
+export function copyOperationsPolicyDraft(
+  policy: OperationsPolicy,
+  name: string,
+): Promise<OperationsPolicy> {
+  return api<OperationsPolicy>(`${operationsApiPath}/policies/${policy.id}:copy`, {
     method: "POST",
     headers: { "Idempotency-Key": crypto.randomUUID() },
-    body: JSON.stringify({ expected_state: "draft" }),
+    body: JSON.stringify({ name }),
+  });
+}
+
+export function deleteOperationsPolicyDraft(policy: OperationsPolicy): Promise<void> {
+  return api<void>(`${operationsApiPath}/policies/${policy.id}?expected_version=${policy.version}`, {
+    method: "DELETE",
+    headers: { "Idempotency-Key": crypto.randomUUID() },
+  });
+}
+
+export function activateOperationsPolicy(policy: OperationsPolicy): Promise<OperationsPolicy> {
+  return api<OperationsPolicy>(`${operationsApiPath}/policies/${policy.id}:activate`, {
+    method: "POST",
+    headers: { "Idempotency-Key": crypto.randomUUID() },
+    body: JSON.stringify({ expected_version: policy.version }),
   });
 }

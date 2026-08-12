@@ -1,12 +1,13 @@
 import { Bell, CircleHelp } from "lucide-react";
 import { AccountMenu } from "@/features/auth/account-menu";
+import { formatBeijing } from "@/lib/beijing-time";
 
 export function Topbar() {
-  const today = new Intl.DateTimeFormat("zh-CN", {
+  const today = formatBeijing(new Date(), {
     month: "long",
     day: "numeric",
     weekday: "short",
-  }).format(new Date());
+  });
   return (
     <header className="sticky top-0 z-20 flex h-[64px] items-center justify-end border-b border-slate-200 bg-white/95 px-7 backdrop-blur">
       <div className="flex items-center gap-2">

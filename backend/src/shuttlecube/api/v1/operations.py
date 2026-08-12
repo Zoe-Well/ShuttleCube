@@ -3,11 +3,12 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Header, Query, Request, status
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from shuttlecube.api.dependencies import RequestScope, request_scope, require_csrf
 from shuttlecube.api.errors import BusinessError
+from shuttlecube.application.audit.writer import record_audit
 from shuttlecube.application.operations.access import (
     project_followup_context,
     project_report_payload,
@@ -36,8 +37,12 @@ from shuttlecube.application.operations.idempotency import (
 from shuttlecube.application.operations.policies import (
     PolicyNotConfigured,
     activate_policy,
+    copy_policy_as_draft,
     create_policy_draft,
+    delete_policy_draft,
     get_active_policy,
+    get_policy,
+    update_policy_draft,
 )
 from shuttlecube.application.operations.reconciliation_workflow import (
     enqueue_reconciliation_explanation,
@@ -66,6 +71,11 @@ from shuttlecube.application.operations.tools import (
     ToolExecutionContext,
     ToolRegistry,
 )
+from shuttlecube.application.operations.verifiers import VerifierRegistry
+from shuttlecube.domain.classes.class_models import ClassSession, FixedClass
+from shuttlecube.domain.classes.enrollment_models import Enrollment
+from shuttlecube.domain.customers.models import Student
+from shuttlecube.domain.identity.coach import CoachProfile
 from shuttlecube.domain.identity.models import SystemUser
 from shuttlecube.domain.identity.organization_models import (
     Organization,
@@ -83,6 +93,7 @@ from shuttlecube.domain.operations.models import (
 )
 from shuttlecube.domain.operations.policy_models import OperationsPolicy
 from shuttlecube.domain.operations.schemas import OperationsPolicyConfig
+from shuttlecube.domain.private_lessons.models import PrivateLessonPackage
 from shuttlecube.domain.scheduling.court import Venue
 from shuttlecube.infrastructure.database.session import get_db
 
@@ -92,14 +103,29 @@ router = APIRouter(prefix="/operations", tags=["Intelligent Operations"])
 class PolicyDraftInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    name: str = Field(min_length=1, max_length=80)
     schema_version: Literal["1"]
     config: OperationsPolicyConfig
+
+
+class PolicyUpdateInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1, max_length=80)
+    config: OperationsPolicyConfig
+    expected_version: int = Field(ge=1)
+
+
+class PolicyCopyInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1, max_length=80)
 
 
 class PolicyActivationInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    expected_state: Literal["draft"]
+    expected_version: int = Field(ge=1)
 
 
 class ScanInput(BaseModel):
@@ -168,6 +194,7 @@ class ApprovalDecisionInput(BaseModel):
 def _policy_payload(policy: OperationsPolicy) -> dict[str, object]:
     return {
         "id": policy.id,
+        "name": policy.name,
         "policy_key": policy.policy_key,
         "policy_version": policy.policy_version,
         "schema_version": str(policy.schema_version),
@@ -180,6 +207,8 @@ def _policy_payload(policy: OperationsPolicy) -> dict[str, object]:
         "activated_by": policy.activated_by,
         "activated_at": policy.activated_at,
         "created_at": policy.created_at,
+        "updated_at": policy.updated_at,
+        "version": policy.version,
     }
 
 
@@ -317,9 +346,7 @@ def get_operations_context(
 
 @router.get("/policies", operation_id="listOperationsPolicies")
 def list_operations_policies(
-    scope: Annotated[
-        RequestScope, Depends(require_scope_capability("operations.policy.manage"))
-    ],
+    scope: Annotated[RequestScope, Depends(require_scope_capability("operations.policy.manage"))],
     db: Annotated[Session, Depends(get_db)],
 ) -> list[dict[str, object]]:
     policies = db.scalars(
@@ -336,14 +363,21 @@ def list_operations_policies(
     return [_policy_payload(policy) for policy in policies]
 
 
+@router.get("/policies/{policy_id}", operation_id="getOperationsPolicy")
+def get_operations_policy(
+    policy_id: str,
+    scope: Annotated[RequestScope, Depends(require_scope_capability("operations.policy.manage"))],
+    db: Annotated[Session, Depends(get_db)],
+) -> dict[str, object]:
+    return _policy_payload(get_policy(db, scope=scope, policy_id=policy_id))
+
+
 @router.post("/scans", operation_id="startOperationsScan", status_code=status.HTTP_202_ACCEPTED)
 def start_operations_scan(
     payload: ScanInput,
-    scope: Annotated[
-        RequestScope, Depends(require_scope_capability("operations.case.manage"))
-    ],
+    scope: Annotated[RequestScope, Depends(require_scope_capability("operations.case.manage"))],
     db: Annotated[Session, Depends(get_db)],
-    _: Annotated[SystemUser, Depends(require_csrf)],
+    _user: Annotated[SystemUser, Depends(require_csrf)],
     idempotency_key: Annotated[str, Header(alias="Idempotency-Key")],
 ) -> dict[str, object]:
     enabled_keys = {item.detector_key for item in DetectorRegistry.default().enabled()}
@@ -370,12 +404,19 @@ def start_operations_scan(
 
 @router.get("/cases", operation_id="listOperationCases")
 def list_operation_cases(
-    scope: Annotated[
-        RequestScope, Depends(require_scope_capability("operations.case.read"))
-    ],
+    scope: Annotated[RequestScope, Depends(require_scope_capability("operations.case.read"))],
     db: Annotated[Session, Depends(get_db)],
     queue_key: str | None = None,
-    case_states: Annotated[list[str] | None, Query(alias="state")] = None,
+    case_states: Annotated[
+        list[str] | None,
+        Query(
+            alias="state",
+            description=(
+                "Repeat to select states. When omitted, resolved and dismissed cases "
+                "are excluded."
+            ),
+        ),
+    ] = None,
     case_type: str | None = None,
     assigned_to: str | None = None,
     cursor: str | None = None,
@@ -391,18 +432,27 @@ def list_operation_cases(
         statement = statement.where(OperationCase.queue_key == queue_key)
     if case_states:
         statement = statement.where(OperationCase.state.in_(case_states))
+    else:
+        statement = statement.where(
+            OperationCase.state.not_in(("resolved", "dismissed"))
+        )
     if case_type:
         statement = statement.where(OperationCase.case_type == case_type)
     if assigned_to:
         statement = statement.where(OperationCase.assigned_to == assigned_to)
-    cases = db.scalars(
-        statement.order_by(
+    if case_states and set(case_states).issubset({"resolved", "dismissed"}):
+        statement = statement.order_by(
+            func.coalesce(OperationCase.resolved_at, OperationCase.updated_at).desc(),
+            OperationCase.id.desc(),
+        )
+    else:
+        statement = statement.order_by(
             OperationCase.priority_score.desc(),
             OperationCase.due_at,
             OperationCase.last_detected_at.desc(),
             OperationCase.id.desc(),
         )
-    ).all()
+    cases = db.scalars(statement).all()
     start = 0
     if cursor:
         positions = [index for index, item in enumerate(cases) if item.id == cursor]
@@ -420,9 +470,7 @@ def list_operation_cases(
 @router.get("/cases/{case_id}", operation_id="getOperationCase")
 def get_operation_case(
     case_id: str,
-    scope: Annotated[
-        RequestScope, Depends(require_scope_capability("operations.case.read"))
-    ],
+    scope: Annotated[RequestScope, Depends(require_scope_capability("operations.case.read"))],
     db: Annotated[Session, Depends(get_db)],
 ) -> dict[str, object]:
     case = _visible_case(db, scope, case_id)
@@ -460,6 +508,221 @@ def get_operation_case(
 
 
 @router.get(
+    "/cases/{case_id}/action-context",
+    operation_id="getOperationCaseActionContext",
+)
+def get_operation_case_action_context(
+    case_id: str,
+    scope: Annotated[RequestScope, Depends(require_scope_capability("operations.case.read"))],
+    db: Annotated[Session, Depends(get_db)],
+) -> dict[str, object]:
+    case = _visible_case(db, scope, case_id)
+    if case.state in {"resolved", "dismissed"}:
+        raise BusinessError(409, "case_closed", "已完成事项只能查看，不能继续处理")
+
+    if case.case_type == "attendance_overdue":
+        session = db.scalar(
+            select(ClassSession).where(
+                ClassSession.id == case.subject_id,
+                ClassSession.organization_id == scope.organization_id,
+                ClassSession.venue_id == scope.venue_id,
+            )
+        )
+        if session is None:
+            raise BusinessError(404, "scope_not_found", "待考勤课程不存在")
+        fixed_class = db.scalar(
+            select(FixedClass).where(
+                FixedClass.id == session.fixed_class_id,
+                FixedClass.organization_id == scope.organization_id,
+                FixedClass.venue_id == scope.venue_id,
+            )
+        )
+        enrollments = db.scalars(
+            select(Enrollment).where(
+                Enrollment.organization_id == scope.organization_id,
+                Enrollment.venue_id == scope.venue_id,
+                Enrollment.fixed_class_id == session.fixed_class_id,
+                Enrollment.status == "active",
+            )
+        ).all()
+        student_ids = {item.student_id for item in enrollments}
+        students = (
+            db.scalars(
+                select(Student).where(
+                    Student.organization_id == scope.organization_id,
+                    Student.id.in_(student_ids),
+                )
+            ).all()
+            if student_ids
+            else []
+        )
+        student_names = {item.id: item.name for item in students}
+        return {
+            "kind": "attendance",
+            "session": {
+                "id": session.id,
+                "fixed_class_id": session.fixed_class_id,
+                "fixed_class_name": fixed_class.name if fixed_class else case.title,
+                "sequence_number": session.sequence_number,
+                "scheduled_start": session.scheduled_start,
+                "scheduled_end": session.scheduled_end,
+                "status": session.status,
+                "attendance_finalized_at": session.attendance_finalized_at,
+                "version": session.version,
+            },
+            "enrollments": [
+                {
+                    "id": item.id,
+                    "student_id": item.student_id,
+                    "student_name": student_names.get(item.student_id, "未知学员"),
+                }
+                for item in enrollments
+            ],
+        }
+
+    if case.case_type == "receivable_followup":
+        context = receivable_followup_context(db, scope=scope, case=case)
+        return {
+            "kind": "receivable",
+            **project_followup_context(context, scope=scope, case_type=case.case_type),
+        }
+
+    if case.case_type == "fixed_class_renewal":
+        fixed_class = db.scalar(
+            select(FixedClass).where(
+                FixedClass.id == case.subject_id,
+                FixedClass.organization_id == scope.organization_id,
+                FixedClass.venue_id == scope.venue_id,
+            )
+        )
+        if fixed_class is None:
+            raise BusinessError(404, "scope_not_found", "固定班不存在")
+        enrollments = db.scalars(
+            select(Enrollment).where(
+                Enrollment.organization_id == scope.organization_id,
+                Enrollment.venue_id == scope.venue_id,
+                Enrollment.fixed_class_id == fixed_class.id,
+                Enrollment.status == "active",
+            )
+        ).all()
+        student_ids = {item.student_id for item in enrollments}
+        students = (
+            db.scalars(
+                select(Student).where(
+                    Student.organization_id == scope.organization_id,
+                    Student.id.in_(student_ids),
+                )
+            ).all()
+            if student_ids
+            else []
+        )
+        student_names = {item.id: item.name for item in students}
+        followup = renewal_followup_context(db, scope=scope, case=case)
+        return {
+            "kind": "fixed_class_renewal",
+            **project_followup_context(followup, scope=scope, case_type=case.case_type),
+            "fixed_class": {
+                "id": fixed_class.id,
+                "name": fixed_class.name,
+                "version": fixed_class.version,
+                "session_count": fixed_class.session_count,
+            },
+            "enrollments": [
+                {
+                    "id": item.id,
+                    "student_name": student_names.get(item.student_id, "未知学员"),
+                    "unit_price": str(item.unit_price),
+                    "status": item.status,
+                }
+                for item in enrollments
+            ],
+        }
+
+    if case.case_type == "private_package_renewal":
+        package = db.scalar(
+            select(PrivateLessonPackage).where(
+                PrivateLessonPackage.id == case.subject_id,
+                PrivateLessonPackage.organization_id == scope.organization_id,
+                PrivateLessonPackage.venue_id == scope.venue_id,
+            )
+        )
+        if package is None:
+            raise BusinessError(404, "scope_not_found", "私教课包不存在")
+        student = db.scalar(
+            select(Student).where(
+                Student.id == package.student_id,
+                Student.organization_id == scope.organization_id,
+            )
+        )
+        coach = db.scalar(
+            select(CoachProfile).where(
+                CoachProfile.id == package.bound_coach_id,
+                CoachProfile.organization_id == scope.organization_id,
+            )
+        )
+        followup = renewal_followup_context(db, scope=scope, case=case)
+        return {
+            "kind": "private_package_renewal",
+            **project_followup_context(followup, scope=scope, case_type=case.case_type),
+            "package": {
+                "id": package.id,
+                "student_id": package.student_id,
+                "student_name": student.name if student else "未知学员",
+                "coach_id": package.bound_coach_id,
+                "coach_name": coach.name if coach else "未知教练",
+                "unit_price": str(package.unit_price),
+                "valid_until": package.valid_until,
+            },
+        }
+
+    if case.case_type == "reconciliation_failure":
+        return {"kind": "reconciliation", **reconciliation_case_context(case)}
+    if case.case_type == "class_replacement_pending":
+        return {"kind": "replacement", "facts": (case.evidence or {}).get("facts", {})}
+    raise BusinessError(422, "case_action_not_supported", "该事项暂不支持在案件内处理")
+
+
+@router.post(
+    "/cases/{case_id}:verify",
+    operation_id="verifyOperationCaseNow",
+)
+def verify_operation_case_now(
+    case_id: str,
+    scope: Annotated[RequestScope, Depends(require_scope_capability("operations.case.manage"))],
+    db: Annotated[Session, Depends(get_db)],
+    user: Annotated[SystemUser, Depends(require_csrf)],
+    request: Request,
+) -> dict[str, object]:
+    case = _visible_case(db, scope, case_id)
+    if case.state in {"resolved", "dismissed"}:
+        return {"state": case.state, "outcome": case.state, "reason_code": "case_closed"}
+    result = VerifierRegistry.default().verify(db, scope, case)
+    record_audit(
+        db,
+        actor_id=user.id,
+        action="operation_case.verified_now",
+        entity_type="operation_case",
+        entity_id=case.id,
+        request_id=request.state.request_id,
+        before=None,
+        after={
+            "outcome": result.outcome,
+            "reason_code": result.reason_code,
+            "state": case.state,
+        },
+        organization_id=scope.organization_id,
+        venue_id=scope.venue_id,
+    )
+    db.commit()
+    db.refresh(case)
+    return {
+        "state": case.state,
+        "outcome": result.outcome,
+        "reason_code": result.reason_code,
+    }
+
+
+@router.get(
     "/cases/{case_id}/followup-context",
     operation_id="getOperationCaseFollowupContext",
 )
@@ -486,9 +749,7 @@ def get_operation_case_followup_context(
 )
 def get_operation_case_reconciliation_context(
     case_id: str,
-    scope: Annotated[
-        RequestScope, Depends(require_scope_capability("operations.case.read"))
-    ],
+    scope: Annotated[RequestScope, Depends(require_scope_capability("operations.case.read"))],
     db: Annotated[Session, Depends(get_db)],
 ) -> dict[str, object]:
     case = _visible_case(db, scope, case_id)
@@ -507,11 +768,9 @@ def get_operation_case_reconciliation_context(
 def list_replacement_candidates(
     case_id: str,
     payload: ReplacementCandidateInput,
-    scope: Annotated[
-        RequestScope, Depends(require_scope_capability("operations.case.manage"))
-    ],
+    scope: Annotated[RequestScope, Depends(require_scope_capability("operations.case.manage"))],
     db: Annotated[Session, Depends(get_db)],
-    _: Annotated[SystemUser, Depends(require_csrf)],
+    _user: Annotated[SystemUser, Depends(require_csrf)],
 ) -> dict[str, object]:
     case = _visible_case(db, scope, case_id)
     try:
@@ -540,11 +799,9 @@ def list_replacement_candidates(
 def propose_replacement(
     case_id: str,
     payload: ReplacementProposalInput,
-    scope: Annotated[
-        RequestScope, Depends(require_scope_capability("operations.case.manage"))
-    ],
+    scope: Annotated[RequestScope, Depends(require_scope_capability("operations.case.manage"))],
     db: Annotated[Session, Depends(get_db)],
-    _: Annotated[SystemUser, Depends(require_csrf)],
+    _user: Annotated[SystemUser, Depends(require_csrf)],
     idempotency_key: Annotated[str, Header(alias="Idempotency-Key")],
 ) -> dict[str, object]:
     case = _visible_case(db, scope, case_id)
@@ -764,9 +1021,7 @@ def post_operation_case_activity(
 
 @router.get("/approvals", operation_id="listOperationApprovals")
 def list_operation_approvals(
-    scope: Annotated[
-        RequestScope, Depends(require_scope_capability("operations.approval.decide"))
-    ],
+    scope: Annotated[RequestScope, Depends(require_scope_capability("operations.approval.decide"))],
     db: Annotated[Session, Depends(get_db)],
     approval_states: Annotated[list[str] | None, Query(alias="state")] = None,
 ) -> list[dict[str, object]]:
@@ -829,9 +1084,7 @@ def approve_operation_tool_call(
     approval_id: str,
     payload: ApprovalDecisionInput,
     request: Request,
-    scope: Annotated[
-        RequestScope, Depends(require_scope_capability("operations.approval.decide"))
-    ],
+    scope: Annotated[RequestScope, Depends(require_scope_capability("operations.approval.decide"))],
     db: Annotated[Session, Depends(get_db)],
     _: Annotated[SystemUser, Depends(require_csrf)],
     idempotency_key: Annotated[str, Header(alias="Idempotency-Key")],
@@ -855,9 +1108,7 @@ def reject_operation_tool_call(
     approval_id: str,
     payload: ApprovalDecisionInput,
     request: Request,
-    scope: Annotated[
-        RequestScope, Depends(require_scope_capability("operations.approval.decide"))
-    ],
+    scope: Annotated[RequestScope, Depends(require_scope_capability("operations.approval.decide"))],
     db: Annotated[Session, Depends(get_db)],
     _: Annotated[SystemUser, Depends(require_csrf)],
     idempotency_key: Annotated[str, Header(alias="Idempotency-Key")],
@@ -875,9 +1126,7 @@ def reject_operation_tool_call(
 
 @router.get("/brief", operation_id="getOperationsDailyBrief")
 def get_operations_daily_brief(
-    scope: Annotated[
-        RequestScope, Depends(require_scope_capability("operations.case.read"))
-    ],
+    scope: Annotated[RequestScope, Depends(require_scope_capability("operations.case.read"))],
     db: Annotated[Session, Depends(get_db)],
 ) -> dict[str, object]:
     return build_daily_brief(db, scope=scope)
@@ -885,9 +1134,7 @@ def get_operations_daily_brief(
 
 @router.get("/reports", operation_id="listOperationsReports")
 def list_operations_reports(
-    scope: Annotated[
-        RequestScope, Depends(require_scope_capability("operations.report.read"))
-    ],
+    scope: Annotated[RequestScope, Depends(require_scope_capability("operations.report.read"))],
     db: Annotated[Session, Depends(get_db)],
     period_type: Literal["day", "week", "month"] | None = None,
     cursor: str | None = None,
@@ -947,9 +1194,7 @@ def list_operations_reports(
 )
 def generate_operations_report(
     payload: ReportRequestInput,
-    scope: Annotated[
-        RequestScope, Depends(require_scope_capability("operations.report.read"))
-    ],
+    scope: Annotated[RequestScope, Depends(require_scope_capability("operations.report.read"))],
     db: Annotated[Session, Depends(get_db)],
     _: Annotated[SystemUser, Depends(require_csrf)],
     idempotency_key: Annotated[str, Header(alias="Idempotency-Key")],
@@ -975,9 +1220,7 @@ def generate_operations_report(
 @router.get("/reports/{report_id}", operation_id="getOperationsReport")
 def get_operations_report_snapshot_endpoint(
     report_id: str,
-    scope: Annotated[
-        RequestScope, Depends(require_scope_capability("operations.report.read"))
-    ],
+    scope: Annotated[RequestScope, Depends(require_scope_capability("operations.report.read"))],
     db: Annotated[Session, Depends(get_db)],
 ) -> dict[str, object]:
     snapshot = get_report_snapshot(db, scope=scope, snapshot_id=report_id)
@@ -1007,9 +1250,7 @@ def get_operations_report_snapshot_endpoint(
 )
 def retry_operations_report_narrative(
     report_id: str,
-    scope: Annotated[
-        RequestScope, Depends(require_scope_capability("operations.report.read"))
-    ],
+    scope: Annotated[RequestScope, Depends(require_scope_capability("operations.report.read"))],
     db: Annotated[Session, Depends(get_db)],
     _: Annotated[SystemUser, Depends(require_csrf)],
     idempotency_key: Annotated[str, Header(alias="Idempotency-Key")],
@@ -1066,9 +1307,7 @@ def assign_operation_case(
     case_id: str,
     payload: AssignInput,
     request: Request,
-    scope: Annotated[
-        RequestScope, Depends(require_scope_capability("operations.case.assign"))
-    ],
+    scope: Annotated[RequestScope, Depends(require_scope_capability("operations.case.assign"))],
     db: Annotated[Session, Depends(get_db)],
     _: Annotated[SystemUser, Depends(require_csrf)],
     idempotency_key: Annotated[str, Header(alias="Idempotency-Key")],
@@ -1111,9 +1350,7 @@ def dismiss_operation_case(
     case_id: str,
     payload: DismissInput,
     request: Request,
-    scope: Annotated[
-        RequestScope, Depends(require_scope_capability("operations.case.manage"))
-    ],
+    scope: Annotated[RequestScope, Depends(require_scope_capability("operations.case.manage"))],
     db: Annotated[Session, Depends(get_db)],
     _: Annotated[SystemUser, Depends(require_csrf)],
     idempotency_key: Annotated[str, Header(alias="Idempotency-Key")],
@@ -1140,9 +1377,8 @@ def dismiss_operation_case(
 )
 def post_operations_policy_draft(
     payload: PolicyDraftInput,
-    scope: Annotated[
-        RequestScope, Depends(require_scope_capability("operations.policy.manage"))
-    ],
+    request: Request,
+    scope: Annotated[RequestScope, Depends(require_scope_capability("operations.policy.manage"))],
     db: Annotated[Session, Depends(get_db)],
     _: Annotated[SystemUser, Depends(require_csrf)],
     idempotency_key: Annotated[str, Header(alias="Idempotency-Key")],
@@ -1153,10 +1389,153 @@ def post_operations_policy_draft(
         scope=scope,
         schema_version=1,
         config=payload.config.model_dump(mode="json"),
+        name=payload.name,
+    )
+    record_audit(
+        db,
+        actor_id=scope.user_id,
+        action="operations.policy_draft_created",
+        entity_type="operations_policy",
+        entity_id=policy.id,
+        request_id=str(getattr(request.state, "request_id", "unknown")),
+        after={
+            "name": policy.name,
+            "policy_version": policy.policy_version,
+            "state": "draft",
+            "config_hash": policy.config_hash,
+        },
+        reason="创建运营规则草稿",
+        organization_id=scope.organization_id,
+        venue_id=scope.venue_id,
     )
     db.commit()
     db.refresh(policy)
     return _policy_payload(policy)
+
+
+@router.patch("/policies/{policy_id}", operation_id="updateOperationsPolicyDraft")
+def patch_operations_policy_draft(
+    policy_id: str,
+    payload: PolicyUpdateInput,
+    request: Request,
+    scope: Annotated[RequestScope, Depends(require_scope_capability("operations.policy.manage"))],
+    db: Annotated[Session, Depends(get_db)],
+    _: Annotated[SystemUser, Depends(require_csrf)],
+    idempotency_key: Annotated[str, Header(alias="Idempotency-Key")],
+) -> dict[str, object]:
+    del idempotency_key
+    current = get_policy(db, scope=scope, policy_id=policy_id)
+    before = {"name": current.name, "config_hash": current.config_hash, "version": current.version}
+    policy = update_policy_draft(
+        db,
+        scope=scope,
+        policy_id=policy_id,
+        name=payload.name,
+        config=payload.config.model_dump(mode="json"),
+        expected_version=payload.expected_version,
+    )
+    record_audit(
+        db,
+        actor_id=scope.user_id,
+        action="operations.policy_draft_updated",
+        entity_type="operations_policy",
+        entity_id=policy.id,
+        request_id=str(getattr(request.state, "request_id", "unknown")),
+        before=before,
+        after={"name": policy.name, "config_hash": policy.config_hash, "version": policy.version},
+        reason="编辑运营规则草稿",
+        organization_id=scope.organization_id,
+        venue_id=scope.venue_id,
+    )
+    db.commit()
+    db.refresh(policy)
+    return _policy_payload(policy)
+
+
+@router.post(
+    "/policies/{policy_id}:copy",
+    operation_id="copyOperationsPolicyDraft",
+    status_code=status.HTTP_201_CREATED,
+)
+def post_operations_policy_copy(
+    policy_id: str,
+    payload: PolicyCopyInput,
+    request: Request,
+    scope: Annotated[RequestScope, Depends(require_scope_capability("operations.policy.manage"))],
+    db: Annotated[Session, Depends(get_db)],
+    _: Annotated[SystemUser, Depends(require_csrf)],
+    idempotency_key: Annotated[str, Header(alias="Idempotency-Key")],
+) -> dict[str, object]:
+    del idempotency_key
+    source = get_policy(db, scope=scope, policy_id=policy_id)
+    policy = copy_policy_as_draft(
+        db,
+        scope=scope,
+        policy_id=policy_id,
+        name=payload.name,
+    )
+    record_audit(
+        db,
+        actor_id=scope.user_id,
+        action="operations.policy_draft_copied",
+        entity_type="operations_policy",
+        entity_id=policy.id,
+        request_id=str(getattr(request.state, "request_id", "unknown")),
+        before={"source_policy_id": source.id, "source_policy_version": source.policy_version},
+        after={
+            "name": policy.name,
+            "policy_version": policy.policy_version,
+            "state": "draft",
+            "config_hash": policy.config_hash,
+        },
+        reason="复制运营规则为新草稿",
+        organization_id=scope.organization_id,
+        venue_id=scope.venue_id,
+    )
+    db.commit()
+    db.refresh(policy)
+    return _policy_payload(policy)
+
+
+@router.delete(
+    "/policies/{policy_id}",
+    operation_id="deleteOperationsPolicyDraft",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def delete_operations_policy_draft(
+    policy_id: str,
+    request: Request,
+    expected_version: Annotated[int, Query(ge=1)],
+    scope: Annotated[RequestScope, Depends(require_scope_capability("operations.policy.manage"))],
+    db: Annotated[Session, Depends(get_db)],
+    _: Annotated[SystemUser, Depends(require_csrf)],
+    idempotency_key: Annotated[str, Header(alias="Idempotency-Key")],
+) -> None:
+    del idempotency_key
+    policy = delete_policy_draft(
+        db,
+        scope=scope,
+        policy_id=policy_id,
+        expected_version=expected_version,
+    )
+    record_audit(
+        db,
+        actor_id=scope.user_id,
+        action="operations.policy_draft_deleted",
+        entity_type="operations_policy",
+        entity_id=policy.id,
+        request_id=str(getattr(request.state, "request_id", "unknown")),
+        before={
+            "name": policy.name,
+            "policy_version": policy.policy_version,
+            "state": policy.state,
+            "config_hash": policy.config_hash,
+        },
+        reason="删除运营规则草稿",
+        organization_id=scope.organization_id,
+        venue_id=scope.venue_id,
+    )
+    db.commit()
 
 
 @router.post(
@@ -1167,14 +1546,12 @@ def post_operations_policy_activation(
     policy_id: str,
     payload: PolicyActivationInput,
     request: Request,
-    scope: Annotated[
-        RequestScope, Depends(require_scope_capability("operations.policy.manage"))
-    ],
+    scope: Annotated[RequestScope, Depends(require_scope_capability("operations.policy.manage"))],
     db: Annotated[Session, Depends(get_db)],
     _: Annotated[SystemUser, Depends(require_csrf)],
     idempotency_key: Annotated[str, Header(alias="Idempotency-Key")],
 ) -> dict[str, object]:
-    del payload, request, idempotency_key
+    del idempotency_key
     current = db.scalar(
         select(OperationsPolicy).where(
             OperationsPolicy.id == policy_id,
@@ -1188,7 +1565,25 @@ def post_operations_policy_activation(
         db,
         scope=scope,
         policy_id=current.id,
-        expected_version=current.version,
+        expected_version=payload.expected_version,
+    )
+    record_audit(
+        db,
+        actor_id=scope.user_id,
+        action="operations.policy_activated",
+        entity_type="operations_policy",
+        entity_id=policy.id,
+        request_id=str(getattr(request.state, "request_id", "unknown")),
+        before={"name": current.name, "policy_version": current.policy_version, "state": "draft"},
+        after={
+            "name": policy.name,
+            "policy_version": policy.policy_version,
+            "state": "active",
+            "config_hash": policy.config_hash,
+        },
+        reason="激活运营规则版本",
+        organization_id=scope.organization_id,
+        venue_id=scope.venue_id,
     )
     db.commit()
     db.refresh(policy)
@@ -1198,9 +1593,7 @@ def post_operations_policy_activation(
 @router.get("/runs/{run_id}", operation_id="getOperationRun")
 def get_operation_run(
     run_id: str,
-    scope: Annotated[
-        RequestScope, Depends(require_scope_capability("operations.case.read"))
-    ],
+    scope: Annotated[RequestScope, Depends(require_scope_capability("operations.case.read"))],
     db: Annotated[Session, Depends(get_db)],
 ) -> dict[str, object]:
     run = OperationsRepository(db, scope).get_run(run_id)
@@ -1260,9 +1653,7 @@ def get_operation_run(
 @router.get("/runs/{run_id}/events", operation_id="listOperationRunEvents")
 def list_operation_run_events(
     run_id: str,
-    scope: Annotated[
-        RequestScope, Depends(require_scope_capability("operations.case.read"))
-    ],
+    scope: Annotated[RequestScope, Depends(require_scope_capability("operations.case.read"))],
     db: Annotated[Session, Depends(get_db)],
     after_sequence: int = 0,
 ) -> list[dict[str, object]]:

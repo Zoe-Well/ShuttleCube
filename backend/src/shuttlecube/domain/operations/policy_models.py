@@ -5,9 +5,11 @@ from sqlalchemy import (
     CheckConstraint,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     String,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -19,9 +21,8 @@ class OperationsPolicy(IdMixin, TimestampMixin, VersionMixin, Base):
     organization_id: Mapped[str] = mapped_column(
         ForeignKey("organizations.id", ondelete="RESTRICT"), index=True
     )
-    venue_id: Mapped[str] = mapped_column(
-        ForeignKey("venues.id", ondelete="RESTRICT"), index=True
-    )
+    venue_id: Mapped[str] = mapped_column(ForeignKey("venues.id", ondelete="RESTRICT"), index=True)
+    name: Mapped[str] = mapped_column(String(80), default="运营规则")
     policy_key: Mapped[str] = mapped_column(String(80), default="default_operations")
     policy_version: Mapped[int] = mapped_column(Integer)
     schema_version: Mapped[int] = mapped_column(Integer)
@@ -43,5 +44,13 @@ class OperationsPolicy(IdMixin, TimestampMixin, VersionMixin, Base):
         CheckConstraint(
             "state IN ('draft', 'active', 'retired')",
             name="ck_operations_policy_state",
+        ),
+        Index(
+            "uq_operations_policy_active",
+            "venue_id",
+            "policy_key",
+            unique=True,
+            sqlite_where=text("state = 'active'"),
+            postgresql_where=text("state = 'active'"),
         ),
     )

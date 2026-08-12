@@ -42,6 +42,10 @@ describe("venue settings", () => {
     );
 
     await waitFor(() => expect(screen.getByLabelText("工作日开门时间")).toHaveValue("14:00"));
+    expect(screen.getByRole("link", { name: /AI 服务配置/ })).toHaveAttribute(
+      "href",
+      "/settings/ai",
+    );
     fireEvent.change(screen.getByLabelText("工作日关门时间"), { target: { value: "13:30" } });
     fireEvent.click(screen.getByRole("button", { name: "保存营业时间" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("工作日关门时间必须晚于开门时间");

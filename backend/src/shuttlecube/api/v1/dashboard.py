@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from shuttlecube.api.dependencies import RequestScope
+from shuttlecube.api.serialization import beijing_today
 from shuttlecube.application.operations.access import require_scope_capability
 from shuttlecube.application.queries.dashboard import (
     EndingWithinDays,
@@ -39,7 +40,7 @@ def dashboard(
     result = get_dashboard(
         db,
         scope,
-        business_date or date.today(),
+        business_date or beijing_today(),
         ending_within_days=ending_within_days,
     )
     if "operations.report.financial.read" not in scope.capabilities:
@@ -66,5 +67,5 @@ def pending_attendance(
             "coach_name": item.coach_name,
             "active_enrollment_count": item.active_enrollment_count,
         }
-        for item in get_pending_attendance(db, scope, business_date or date.today())
+        for item in get_pending_attendance(db, scope, business_date or beijing_today())
     ]

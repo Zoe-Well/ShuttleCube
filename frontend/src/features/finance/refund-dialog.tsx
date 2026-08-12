@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
 
 import { api } from "@/api/client";
+import { beijingDateTimeInputToIso } from "@/lib/beijing-time";
 
 export function RefundDialog({ receivableId, disabled, maxAmount, lessonBalance, onRecorded }: { receivableId: string; disabled?: boolean; maxAmount?: number; lessonBalance?: number | null; onRecorded?: () => void }) {
   const queryClient = useQueryClient();
@@ -24,7 +25,7 @@ export function RefundDialog({ receivableId, disabled, maxAmount, lessonBalance,
     event.preventDefault();
     const data = new FormData(event.currentTarget);
     mutation.mutate({
-      refunded_at: new Date(String(data.get("refunded_at"))).toISOString(),
+      refunded_at: beijingDateTimeInputToIso(String(data.get("refunded_at"))),
       actual_amount: Number(data.get("actual_amount")),
       suggested_amount: Number(data.get("actual_amount")),
       lesson_units_to_remove: Number(data.get("lesson_units_to_remove") || 0),

@@ -16,6 +16,7 @@ import { formatCourtNames, useCourtDirectory } from "@/features/schedule/court-d
 import type { ScheduleCreationAction } from "@/features/schedule/schedule-selection-actions";
 import { ScheduleDetails } from "@/features/schedule/schedule-details";
 import { useVenueHours } from "@/features/schedule/use-venue-hours";
+import { beijingDateKey, formatBeijingDate, formatBeijingTime } from "@/lib/beijing-time";
 
 type Booking = {
   id: string;
@@ -31,12 +32,6 @@ type Booking = {
   payment_status: string;
   status: string;
 };
-function pad(value: number) {
-  return String(value).padStart(2, "0");
-}
-function dateValue(date: Date) {
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
-}
 function bookingDisplayStatus(item: Booking) {
   return ["booked", "confirmed"].includes(item.status)
     && new Date(item.ends_at).getTime() <= Date.now()
@@ -47,7 +42,7 @@ function bookingDisplayStatus(item: Booking) {
 export function BookingsPage() {
   const client = useQueryClient();
   const [action, setAction] = useState<ScheduleCreationAction | null>(null);
-  const [focusDate, setFocusDate] = useState(() => dateValue(new Date()));
+  const [focusDate, setFocusDate] = useState(() => beijingDateKey());
   const [selection, setSelection] = useState<ScheduleSelection | null>(null);
   const [selected, setSelected] = useState<ScheduleItem | null>(null);
   const [selectedReceivable, setSelectedReceivable] = useState<string | null>(null);
@@ -55,9 +50,8 @@ export function BookingsPage() {
   const [recordFromDate, setRecordFromDate] = useState("");
   const [recordToDate, setRecordToDate] = useState("");
   const scheduleRange = useMemo(() => {
-    const start = new Date(`${focusDate}T00:00:00`);
-    const end = new Date(start);
-    end.setDate(end.getDate() + 1);
+    const start = new Date(`${focusDate}T00:00:00+08:00`);
+    const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
     return { start, end };
   }, [focusDate]);
   const query = useQuery({
@@ -268,18 +262,12 @@ export function BookingsPage() {
                   </td>
                   <td>
                     <div className="table-primary">
-                      {new Date(item.starts_at).toLocaleDateString("zh-CN")}
+                      {formatBeijingDate(item.starts_at)}
                     </div>
                     <div className="table-secondary">
-                      {new Date(item.starts_at).toLocaleTimeString("zh-CN", {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}{" "}
+                      {formatBeijingTime(item.starts_at)}{" "}
                       –{" "}
-                      {new Date(item.ends_at).toLocaleTimeString("zh-CN", {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
+                      {formatBeijingTime(item.ends_at)}
                     </div>
                   </td>
                   <td className="table-primary">{item.customer_name}</td>

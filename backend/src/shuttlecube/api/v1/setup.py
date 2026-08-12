@@ -1,4 +1,4 @@
-from datetime import time
+from datetime import UTC, datetime, time
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Response
@@ -10,6 +10,11 @@ from shuttlecube.api.v1.session import SessionView
 from shuttlecube.application.commands.session import login
 from shuttlecube.config import Settings, get_settings
 from shuttlecube.domain.identity.models import SystemUser
+from shuttlecube.domain.identity.organization_models import (
+    Organization,
+    OrganizationMembership,
+    VenueMembership,
+)
 from shuttlecube.domain.scheduling.court import Court, Venue
 from shuttlecube.infrastructure.database.session import get_db
 from shuttlecube.infrastructure.security.passwords import hash_password
@@ -59,7 +64,11 @@ def perform_setup(
         display_name=payload.display_name,
         password_hash=hash_password(payload.password),
     )
+    organization = Organization(name=payload.venue_name)
+    db.add_all([user, organization])
+    db.flush()
     venue = Venue(
+        organization_id=organization.id,
         name=payload.venue_name,
         timezone=settings.timezone,
         weekday_open_time=time(14),
@@ -67,8 +76,28 @@ def perform_setup(
         weekend_open_time=time(8),
         weekend_close_time=time(22),
     )
-    db.add_all([user, venue])
+    db.add(venue)
     db.flush()
+    now = datetime.now(UTC)
+    organization_membership = OrganizationMembership(
+        organization_id=organization.id,
+        user_id=user.id,
+        status="active",
+        organization_role="owner",
+        reviewed_by=user.id,
+        reviewed_at=now,
+    )
+    db.add(organization_membership)
+    db.flush()
+    db.add(
+        VenueMembership(
+            organization_membership_id=organization_membership.id,
+            organization_id=organization.id,
+            venue_id=venue.id,
+            role_key="owner",
+            status="active",
+        )
+    )
     db.add_all(
         [
             Court(venue_id=venue.id, code=str(number), name=f"{number} 号场地")

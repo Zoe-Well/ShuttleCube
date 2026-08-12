@@ -32,6 +32,12 @@ SUPPORTED_SCHEMA_VERSIONS = {
     "0014_fixed_class_lifecycle",
     "0015_other_income",
     "0016_backfill_missing_receivables",
+    "0017_organization_venue_membership",
+    "0018_scope_backfill",
+    "0019_scope_constraints",
+    "0020_operations_policy_settings",
+    "0021_operations_runtime",
+    "0022_operations_policy_names",
 }
 
 

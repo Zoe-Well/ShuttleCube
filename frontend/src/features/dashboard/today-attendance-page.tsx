@@ -4,6 +4,7 @@ import { Link } from "react-router";
 import { api } from "@/api/client";
 import { EmptyState } from "@/components/operations/empty-state";
 import { PageHeader, Panel } from "@/components/operations/page";
+import { formatBeijingTime } from "@/lib/beijing-time";
 import { localDateKey } from "@/lib/utils";
 
 type PendingAttendance = {
@@ -18,8 +19,7 @@ type PendingAttendance = {
 };
 
 function timeRange(start: string, end: string) {
-  const options: Intl.DateTimeFormatOptions = { hour: "2-digit", minute: "2-digit" };
-  return `${new Date(start).toLocaleTimeString("zh-CN", options)}–${new Date(end).toLocaleTimeString("zh-CN", options)}`;
+  return `${formatBeijingTime(start)}–${formatBeijingTime(end)}`;
 }
 
 export function TodayAttendancePage() {

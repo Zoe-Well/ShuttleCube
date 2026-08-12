@@ -8,6 +8,7 @@ import { Drawer } from "@/components/operations/drawer";
 import { MetricCard, PageHeader, Panel } from "@/components/operations/page";
 import { StatusBadge } from "@/components/status/status-badge";
 import { localDateKey } from "@/lib/utils";
+import { formatBeijingDate } from "@/lib/beijing-time";
 import { SettlementDialog } from "./settlement-dialog";
 import { SettlementDetail } from "./settlement-detail";
 import type { CoachFee, Settlement } from "./types";
@@ -105,7 +106,7 @@ export function CoachFeesPage() {
                     {item.business_path ? <Link className="table-primary hover:text-emerald-700" to={item.business_path}>{item.business_name}</Link> : <span className="table-primary">{item.business_name}</span>}
                     <div className="table-secondary">{item.coach_name ?? coachName(item.coach_id)}</div>
                   </td>
-                  <td>{new Date(item.occurred_at).toLocaleDateString("zh-CN")}</td>
+                  <td>{formatBeijingDate(item.occurred_at)}</td>
                   <td>¥{Number(item.base_amount).toFixed(2)}</td>
                   <td className={item.adjustment_amount ? "text-amber-700" : "text-slate-400"}>{item.adjustment_amount ? `${item.adjustment_amount > 0 ? "+" : ""}¥${Number(item.adjustment_amount).toFixed(2)}` : "—"}</td>
                   <td className="font-semibold">¥{Number(item.amount).toFixed(2)}</td>

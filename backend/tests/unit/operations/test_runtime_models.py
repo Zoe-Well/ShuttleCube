@@ -14,8 +14,8 @@ from shuttlecube.domain.operations.models import (
     OperationApproval,
     OperationCase,
     OperationEvent,
-    OperationsReportSnapshot,
     OperationRun,
+    OperationsReportSnapshot,
     OperationToolCall,
 )
 

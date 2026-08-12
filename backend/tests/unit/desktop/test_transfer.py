@@ -131,7 +131,7 @@ def test_current_schema_transfer_round_trip_restores_data_and_clears_sessions(
     package = export_transfer(paths, tmp_path / "exports")
     manifest = validate_transfer(package)
 
-    assert manifest.schema_version == "0016_backfill_missing_receivables"
+    assert manifest.schema_version == "0022_operations_policy_names"
     with closing(sqlite3.connect(package / "database" / "shuttlecube.db")) as connection:
         assert connection.execute("SELECT count(*) FROM user_sessions").fetchone() == (0,)
 

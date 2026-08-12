@@ -55,6 +55,8 @@ ShuttleCube 适合建设“案件驱动的智能运营系统”，不适合先�
 4. **Given** 问题已经由人工页面处理，**When** Verifier 再次运行，**Then** 案件自动进入 resolved，并记录关闭依据和时间。
 5. **Given** Detector 创建新案件，**When** 没有具体人员负责，**Then** 案件进入由 case_type 和 required_capability 确定的角色队列，符合权限的人员可认领且 SLA 继续计算。
 6. **Given** 已分配人员被禁用或失去案件所需 capability，**When** 权限变化被提交，**Then** 案件保留历史责任记录并回到原角色队列，不继续向无权限人员展示受限证据。
+7. **Given** 案件已进入 resolved 或 dismissed，**When** 用户打开运营中心，**Then** 默认待处理列表不再展示该案件，但可从“已完成”历史入口只读查询业务摘要、处理结果和人工处理记录；普通用户不直接看到内部记录编号或系统运行日志。
+8. **Given** 用户处理活动案件，**When** 打开“下一步处理”，**Then** 系统在当前案件页面的侧边窗口展示具体业务对象、问题原因、完成标准和对应操作，不要求用户先跳转到完整业务页面；业务操作完成后立即运行确定性 Verifier 并刷新案件状态。
 
 ---
 
@@ -327,7 +329,7 @@ Agent 输出必须以卡片化结构呈现：
 - 报告异常阈值、数据充分性和严重度基线；
 - 低风险操作确认、审批过期和案件 SLA。
 
-Policy 由确定性配置和代码规则组成，具有 policy_key、policy_version、effective_from、effective_to、venue_id、schema_version 和 status。Case、Run、Snapshot、ToolCall 和 Approval 保存实际使用的 policy_version；修改 Policy 不追溯改写历史结论。
+Policy 由确定性配置和代码规则组成，具有用户可识别的名称、policy_key、policy_version、effective_from、effective_to、venue_id、schema_version 和 status。草稿可查看、重命名、编辑和删除；生效与历史版本只读，但可复制为新草稿。创建、编辑、复制、删除和激活均需权限校验、并发版本校验和审计。Case、Run、Snapshot、ToolCall 和 Approval 保存实际使用的 policy_version；修改 Policy 不追溯改写历史结论。
 
 初始 Policy 的阈值不是现有业务事实，不由本 Spec 假装已有。Phase 0 必须由场馆负责人确认首个 policy_version 后才启用对应 Detector；未配置的规则返回 policy_not_configured 并保持禁用，LLM 不得补造默认阈值。
 
@@ -551,7 +553,7 @@ running -> succeeded | failed | escalated | cancelled
 
 **初始 Detectors**:
 
-1. attendance.overdue：课程仍为 scheduled、结束时间超过配置宽限期、attendance_finalized_at 为空；
+1. attendance.overdue：课程仍为 scheduled、结束时间超过配置宽限期、attendance_finalized_at 为空；若固定班当前没有有效报名学员，案件必须引导用户将该节标记为“未开课（无学员）”，释放排期且不生成考勤、课时扣减或教练费用，不得要求提交空考勤；
 2. class.replacement_pending：课程为 cancelled 且 replacement_decision 为 pending；
 3. receivable.aging_followup：非 void 应收未结清且 created_at 账龄达到阈值；
 4. reconciliation.failed：第 7.5 节任一确定性规则失败；
@@ -1002,14 +1004,14 @@ FastAPI 模块化单体
 | 数据库 | 复用当前 PostgreSQL／SQLite | 规模小、需要与业务事实同事务；不增加运行存储 |
 | 商业化作用域 | Organization → Venue + 服务端 RequestScope | 首版仍单活动场馆，但提前固定数据隔离、权限、报告和 Agent 上下文边界；不实现完整 SaaS 管理面 |
 | 运营策略 | 版本化结构配置 + 普通确定性规则 | 不同球馆阈值和补排政策不同；不需要动态规则引擎 |
-| 模型接入 | 内部 ModelClient Protocol，首版只实现一个配置的 provider adapter | 避免自建 AI Gateway 和多供应商复杂度，同时保留替换边界 |
+| 模型接入 | 内部 ModelClient Protocol，支持 OpenAI、DeepSeek 和自定义 OpenAI 兼容服务 | OpenAI 使用 Responses API，DeepSeek 使用 Chat Completions；不引入独立 AI Gateway |
 | 模型输出 | JSON Schema 结构化输出 | 可确定性校验计划、工具参数、未知项和引用 |
 | 前端进度 | REST 轮询 | 运行量小，审批等待长；不需要 SSE／WebSocket |
 | 知识检索 | 不使用向量数据库／RAG | 当前核心事实均为结构化实时数据；制度文档需求尚不存在 |
 | 通知 | 不接外部渠道 | 当前没有微信／短信／邮件业务能力和授权模型 |
 | 多 Agent | 不采用 | 单一案件工作流已经足够；拆分多 Agent 会增加状态、授权和 Eval 成本 |
 
-模型 provider 的具体产品不是本 Spec 的业务承诺。实施计划应选择一个支持结构化输出、Tool calling、超时、用量和数据保留控制的 provider，并保持 ModelClient 接口；首版不同时实现多个 provider。
+桌面版允许场馆负责人选择 OpenAI、DeepSeek 或自定义 OpenAI 兼容服务，并独立填写模型名称与 API Key。OpenAI 使用 Responses API，DeepSeek 使用 Chat Completions API，自定义服务由用户选择协议。保存配置只代表连接验证成功，不得自动开启当前 Venue 的 AI 服务；选择非 OpenAI 服务时必须提示业务信息会发送给对应第三方。
 
 ### 12.2 Runner 约束
 
@@ -1140,6 +1142,8 @@ FastAPI 模块化单体
 - **FR-008**: 同一业务问题重复扫描 MUST NOT 创建重复活动案件。
 - **FR-009**: 案件 MUST 保存首次／最近发现、下次检查、截止时间、状态和关闭依据。
 - **FR-010**: resolved 或 dismissed 案件再次异常时 MUST 保留旧历史并记录新 occurrence。
+- **FR-010a**: 运营中心默认工作队列 MUST 排除 resolved 和 dismissed；终态案件 MUST 在独立历史入口保持只读可查询，详情默认展示业务摘要而非内部记录 ID，系统运行记录仅向具备案件管理权限的用户折叠展示。
+- **FR-010b**: 活动案件 MUST 优先在案件页侧边操作窗口完成考勤、单笔收款、固定班续期、私教课包续费、课程补排和数据核对；窗口 MUST 明确当前对象、异常依据与完成标准。完整业务页面只作为补充资料或未支持修正流程的兜底入口，业务写入后 MUST 可立即触发确定性核对。
 - **FR-011**: 系统 MUST 提供业务链接和原始证据，不要求用户相信无来源的模型结论。
 
 ### 15.3 场景

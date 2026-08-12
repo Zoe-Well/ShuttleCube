@@ -22,6 +22,24 @@ _PRIORITY = {
 }
 
 
+def _fact_int(value: object, default: int = 0) -> int:
+    if isinstance(value, (int, str)):
+        try:
+            return int(value)
+        except ValueError:
+            return default
+    return default
+
+
+def _case_title(definition: DetectorDefinition, evidence: EvidenceEnvelope) -> str:
+    if (
+        definition.case_type == "attendance_overdue"
+        and _fact_int(evidence.facts.get("active_enrollment_count"), -1) == 0
+    ):
+        return "零学员课程尚未标记为未开课"
+    return definition.title
+
+
 def upsert_detected_case(
     db: Session,
     *,
@@ -60,7 +78,7 @@ def upsert_detected_case(
             evidence=evidence.model_dump(mode="json"),
             severity=evidence.severity_baseline,
             priority_score=_PRIORITY[evidence.severity_baseline],
-            title=definition.title,
+            title=_case_title(definition, evidence),
             state="open",
             first_detected_at=now,
             last_detected_at=now,
@@ -85,11 +103,12 @@ def upsert_detected_case(
         item.last_detected_at = now
         item.queue_key = definition.queue_key
         item.required_capability = definition.required_capability
+        item.title = _case_title(definition, evidence)
     db.flush()
     facts = evidence.facts
     if (
         definition.case_type == "reconciliation_failure"
-        and int(facts.get("failure_count", 0)) >= 3
+        and _fact_int(facts.get("failure_count")) >= 3
         and item.state not in {"escalated", "resolved", "dismissed"}
     ):
         transition_case(item, "escalated", now=now)

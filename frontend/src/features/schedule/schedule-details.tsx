@@ -1,5 +1,6 @@
 import { CalendarClock, Clock3, Layers3, MapPin } from "lucide-react";
 import { StatusBadge } from "@/components/status/status-badge";
+import { formatBeijingDate, formatBeijingTime } from "@/lib/beijing-time";
 import { formatScheduleCourtNames, useCourtDirectory } from "./court-display";
 import type { ScheduleItem } from "./schedule-calendar";
 import { ScheduleRecordActions } from "./schedule-record-actions";
@@ -45,7 +46,7 @@ export function ScheduleDetails({ item, onChanged }: { item: ScheduleItem; onCha
           <div>
             <dt className="text-[11px] text-slate-400">日期</dt>
             <dd className="m-0 mt-1 text-sm font-medium text-slate-700">
-              {new Date(item.starts_at).toLocaleDateString("zh-CN", {
+              {formatBeijingDate(item.starts_at, {
                 year: "numeric",
                 month: "long",
                 day: "numeric",
@@ -72,15 +73,9 @@ export function ScheduleDetails({ item, onChanged }: { item: ScheduleItem; onCha
           <div>
             <dt className="text-[11px] text-slate-400">时间</dt>
             <dd className="m-0 mt-1 text-sm font-medium text-slate-700">
-              {new Date(item.starts_at).toLocaleTimeString("zh-CN", {
-                hour: "2-digit",
-                minute: "2-digit",
-              })}{" "}
+              {formatBeijingTime(item.starts_at)}{" "}
               –{" "}
-              {new Date(item.ends_at).toLocaleTimeString("zh-CN", {
-                hour: "2-digit",
-                minute: "2-digit",
-              })}
+              {formatBeijingTime(item.ends_at)}
             </dd>
           </div>
         </div>
